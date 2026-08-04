@@ -12,6 +12,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.4
 	github.com/aws/smithy-go v1.27.6
 	github.com/huaweicloud/huaweicloud-sdk-go-obs v3.26.6+incompatible
+	github.com/pelletier/go-toml/v2 v2.4.3
+	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )

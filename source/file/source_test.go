@@ -57,3 +57,59 @@ func TestSourceReloadsJSONConfigurationByContainerKey(t *testing.T) {
 		t.Fatalf("reloaded root = %q, want %q", got, "D:/v2")
 	}
 }
+
+func TestSourceLoadsYAMLConfigurationByContainerKey(t *testing.T) {
+	path := t.TempDir() + "/storage.yaml"
+	if err := os.WriteFile(path, []byte(`containers:
+  dicom:
+    backend: filesystem
+    tenant_mode: 1
+    values:
+      root: D:/yaml
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	source, err := Open(path, YAMLDecoder{})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	config, err := source.Load(context.Background(), "dicom", store.Scope{})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.TenantMode != store.TenantShared {
+		t.Fatalf("TenantMode = %d, want %d", config.TenantMode, store.TenantShared)
+	}
+	if got := config.Values["root"]; got != "D:/yaml" {
+		t.Fatalf("root = %q, want %q", got, "D:/yaml")
+	}
+}
+
+func TestSourceLoadsTOMLConfigurationByContainerKey(t *testing.T) {
+	path := t.TempDir() + "/storage.toml"
+	if err := os.WriteFile(path, []byte(`[containers.dicom]
+backend = "filesystem"
+tenant_mode = 1
+
+[containers.dicom.values]
+root = "D:/toml"
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	source, err := Open(path, TOMLDecoder{})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	config, err := source.Load(context.Background(), "dicom", store.Scope{})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.TenantMode != store.TenantShared {
+		t.Fatalf("TenantMode = %d, want %d", config.TenantMode, store.TenantShared)
+	}
+	if got := config.Values["root"]; got != "D:/toml" {
+		t.Fatalf("root = %q, want %q", got, "D:/toml")
+	}
+}

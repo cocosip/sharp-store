@@ -17,11 +17,26 @@ configs := static.New(map[store.ContainerKey]store.ContainerConfig{
 factory, err := store.NewFactory(configs, backends)
 ```
 
-## JSON File
+## Configuration Files
 
-`source/file.Open(path, file.JSONDecoder{})` loads the document immediately.
-Call `Reload(ctx)` to atomically replace the in-memory snapshot. JSON uses the
-serialized `ContainerConfig` shape, so backend values are a string map.
+`source/file` supports JSON, YAML, and TOML. `Open` loads the document
+immediately; `Reload(ctx)` first parses a complete replacement snapshot, then
+atomically publishes it. Backend values are always string maps.
+
+Choose the decoder that matches the file format:
+
+```go
+configs, err := file.Open("configs/storage.yaml", file.YAMLDecoder{})
+if err != nil { return err }
+factory, err := store.NewFactory(configs, backends)
+// Later: err = configs.Reload(ctx)
+```
+
+Use `file.JSONDecoder{}` for `.json`, `file.YAMLDecoder{}` for `.yaml` or
+`.yml`, and `file.TOMLDecoder{}` for `.toml`. Each decoder returns the same
+configuration model.
+
+### JSON
 
 ```json
 {
@@ -41,16 +56,45 @@ serialized `ContainerConfig` shape, so backend values are a string map.
 }
 ```
 
-```go
-configs, err := file.Open("configs/storage.json", file.JSONDecoder{})
-if err != nil { return err }
-factory, err := store.NewFactory(configs, backends)
-// Later: err = configs.Reload(ctx)
+JSON uses `tenantMode`.
+
+### YAML
+
+```yaml
+containers:
+  images:
+    backend: minio
+    tenant_mode: 0
+    values:
+      bucket: images
+      endpoint: minio.example:9000
+      access_key: access
+      secret_key: secret
+      use_ssl: "true"
 ```
 
-Use the provider constants (for example `minio.BucketKey`) when generating
-JSON programmatically. JSON is appropriate when operations teams own the file;
-do not commit real secrets.
+### TOML
+
+```toml
+[containers.images]
+backend = "minio"
+tenant_mode = 0
+
+[containers.images.values]
+bucket = "images"
+endpoint = "minio.example:9000"
+access_key = "access"
+secret_key = "secret"
+use_ssl = "true"
+```
+
+YAML and TOML use `tenant_mode`. Use the provider constants (for example
+`minio.BucketKey`) when generating configuration programmatically. Do not
+commit real secrets.
+
+For an unsupported file format, implement `file.Decoder`; only parsing needs
+to be replaced, not the file loading, reload, or `ConfigSource` behavior.
+
 
 ## GORM
 

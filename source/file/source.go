@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	store "github.com/cocosip/sharp-store"
+	"github.com/pelletier/go-toml/v2"
+	"gopkg.in/yaml.v3"
 )
 
 type Decoder interface {
@@ -23,13 +25,55 @@ type ReloadableSource interface {
 type JSONDecoder struct{}
 
 func (JSONDecoder) Decode(reader io.Reader) (map[store.ContainerKey]store.ContainerConfig, error) {
-	var document struct {
-		Containers map[store.ContainerKey]store.ContainerConfig `json:"containers"`
-	}
+	var document configDocument
 	if err := json.NewDecoder(reader).Decode(&document); err != nil {
 		return nil, err
 	}
-	return document.Containers, nil
+	return document.configs(), nil
+}
+
+// YAMLDecoder decodes a YAML storage configuration document.
+type YAMLDecoder struct{}
+
+func (YAMLDecoder) Decode(reader io.Reader) (map[store.ContainerKey]store.ContainerConfig, error) {
+	var document configDocument
+	if err := yaml.NewDecoder(reader).Decode(&document); err != nil {
+		return nil, err
+	}
+	return document.configs(), nil
+}
+
+// TOMLDecoder decodes a TOML storage configuration document.
+type TOMLDecoder struct{}
+
+func (TOMLDecoder) Decode(reader io.Reader) (map[store.ContainerKey]store.ContainerConfig, error) {
+	var document configDocument
+	if err := toml.NewDecoder(reader).Decode(&document); err != nil {
+		return nil, err
+	}
+	return document.configs(), nil
+}
+
+type configDocument struct {
+	Containers map[string]containerDocument `json:"containers" yaml:"containers" toml:"containers"`
+}
+
+type containerDocument struct {
+	Backend    string            `json:"backend" yaml:"backend" toml:"backend"`
+	TenantMode store.TenantMode  `json:"tenantMode" yaml:"tenant_mode" toml:"tenant_mode"`
+	Values     map[string]string `json:"values" yaml:"values" toml:"values"`
+}
+
+func (d configDocument) configs() map[store.ContainerKey]store.ContainerConfig {
+	configs := make(map[store.ContainerKey]store.ContainerConfig, len(d.Containers))
+	for key, config := range d.Containers {
+		configs[store.ContainerKey(key)] = store.ContainerConfig{
+			Backend:    config.Backend,
+			TenantMode: config.TenantMode,
+			Values:     config.Values,
+		}
+	}
+	return configs
 }
 
 type Source struct {

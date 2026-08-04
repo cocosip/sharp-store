@@ -92,7 +92,8 @@ config := store.NewContainerConfig(minio.Config{
 ```
 
 See [provider configuration](docs/providers.md) for every backend and
-[configuration sources](docs/config-sources.md) for code, JSON, and GORM.
+[configuration sources](docs/config-sources.md) for code, JSON, YAML, TOML,
+and GORM.
 
 ## Tenant Scope
 
