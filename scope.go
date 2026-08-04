@@ -14,6 +14,17 @@ type Scope struct {
 	Values map[string]string
 }
 
+func (s Scope) clone() Scope {
+	copy := s
+	if s.Values != nil {
+		copy.Values = make(map[string]string, len(s.Values))
+		for key, value := range s.Values {
+			copy.Values[key] = value
+		}
+	}
+	return copy
+}
+
 type ScopeResolver interface {
 	Resolve(ctx context.Context) (Scope, error)
 }

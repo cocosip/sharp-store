@@ -6,6 +6,9 @@ import (
 	"io"
 )
 
+// Container is safe for concurrent use by multiple goroutines. Each operation
+// has independent request state. Callers must not concurrently reuse mutable
+// method inputs, such as an io.Reader or a destination path.
 type Container interface {
 	Configuration() ContainerConfig
 	Save(ctx context.Context, fileID string, body io.Reader, extension string, overwrite bool) (string, error)
@@ -89,6 +92,7 @@ func (f *Factory) OpenWithScope(ctx context.Context, key ContainerKey, scope Sco
 	if config.TenantMode == TenantShared {
 		scope = scope.withoutTenant()
 	}
+	scope = scope.clone()
 	return &container{
 		key:     key,
 		config:  config.Clone(),

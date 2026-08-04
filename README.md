@@ -79,6 +79,21 @@ ConfigSource.Load(key, scope) -> ContainerConfig -> Factory.Open -> Container
 backend configuration; a new `Factory.Open` call observes a reloaded or updated
 source.
 
+## Concurrency
+
+A `Container` is safe for concurrent use by multiple goroutines. One opened
+container can perform independent `Save`, `Get`, `Download`, and other file
+operations concurrently. The container snapshots its configuration and scope
+when opened, so subsequent mutation of caller-owned configuration or
+`Scope.Values` data does not affect its operations.
+
+Callers retain ownership of mutable method inputs: do not share an `io.Reader`
+or destination file path across concurrent calls unless the caller synchronizes
+that access. Custom `Backend`, `NamingService`, and `KeyBuilder`
+implementations registered with a factory must also be safe for concurrent use.
+Operations for the same object key retain the atomicity and overwrite semantics
+of the selected backend; `Container` does not serialize them.
+
 ## Configuration
 
 Every backend exposes a typed `Config` that implements `store.BackendConfig`.

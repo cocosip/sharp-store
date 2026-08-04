@@ -34,6 +34,8 @@ type AccessURLRequest struct {
 	CheckExists bool
 }
 
+// Backend implementations must be safe for concurrent use by multiple
+// goroutines because a single Container can invoke them concurrently.
 type Backend interface {
 	Name() string
 	Save(ctx context.Context, request SaveRequest) (string, error)

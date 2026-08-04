@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+// KeyBuilder implementations must be safe for concurrent use by multiple
+// goroutines when supplied to a Factory.
 type KeyBuilder interface {
 	Build(ctx context.Context, request FileRequest) (string, error)
 }

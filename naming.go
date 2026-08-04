@@ -7,6 +7,8 @@ type NormalizedName struct {
 	FileID    string
 }
 
+// NamingService implementations must be safe for concurrent use by multiple
+// goroutines when supplied to a Factory.
 type NamingService interface {
 	Normalize(
 		ctx context.Context,
