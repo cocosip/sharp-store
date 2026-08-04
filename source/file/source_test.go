@@ -3,10 +3,47 @@ package file
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	store "github.com/cocosip/sharp-store"
 )
+
+func TestDocumentationExamplesLoadAllSupportedBackends(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		path    string
+		decoder Decoder
+	}{
+		{name: "JSON", path: "storage.example.json", decoder: JSONDecoder{}},
+		{name: "YAML", path: "storage.example.yaml", decoder: YAMLDecoder{}},
+		{name: "TOML", path: "storage.example.toml", decoder: TOMLDecoder{}},
+	}
+	want := map[store.ContainerKey]string{
+		"filesystem": "filesystem", "s3": "s3", "aws": "aws", "minio": "minio",
+		"ks3": "ks3", "azure": "azure", "aliyun": "aliyun", "obs": "obs",
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source, err := Open(filepath.Join("..", "..", "docs", test.path), test.decoder)
+			if err != nil {
+				t.Fatalf("Open() error = %v", err)
+			}
+			for key, backend := range want {
+				config, err := source.Load(context.Background(), key, store.Scope{})
+				if err != nil {
+					t.Fatalf("Load(%q) error = %v", key, err)
+				}
+				if config.Backend != backend {
+					t.Errorf("Load(%q).Backend = %q, want %q", key, config.Backend, backend)
+				}
+			}
+		})
+	}
+}
 
 func TestSourceReloadsJSONConfigurationByContainerKey(t *testing.T) {
 	t.Parallel()

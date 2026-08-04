@@ -36,6 +36,12 @@ Use `file.JSONDecoder{}` for `.json`, `file.YAMLDecoder{}` for `.yaml` or
 `.yml`, and `file.TOMLDecoder{}` for `.toml`. Each decoder returns the same
 configuration model.
 
+Complete, equivalent examples for every supported backend are available as
+[`storage.example.json`](storage.example.json),
+[`storage.example.yaml`](storage.example.yaml), and
+[`storage.example.toml`](storage.example.toml). Replace all credential
+placeholders before use; backend values, including booleans, are strings.
+
 ### JSON
 
 ```json
