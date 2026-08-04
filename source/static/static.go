@@ -10,7 +10,7 @@ type Source struct {
 	configs map[store.ContainerKey]store.ContainerConfig
 }
 
-func New(configs map[store.ContainerKey]store.ContainerConfig) *Source {
+func New(configs map[store.ContainerKey]store.ContainerConfig) store.ConfigSource {
 	copy := make(map[store.ContainerKey]store.ContainerConfig, len(configs))
 	for key, config := range configs {
 		copy[key] = config.Clone()

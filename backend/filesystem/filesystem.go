@@ -21,7 +21,7 @@ const (
 
 type Backend struct{}
 
-func New() *Backend {
+func New() store.Backend {
 	return &Backend{}
 }
 

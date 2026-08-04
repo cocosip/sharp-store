@@ -21,7 +21,7 @@ const (
 
 type Backend struct{ clients sync.Map }
 
-func New() *Backend           { return &Backend{} }
+func New() store.Backend      { return &Backend{} }
 func (*Backend) Name() string { return Name }
 func (*Backend) ConfigOptions() []store.ConfigOption {
 	return []store.ConfigOption{{Name: ConnectionStringKey, Type: "string", Required: true, Sensitive: true, Description: "Azure Storage connection string."}, {Name: ContainerKey, Type: "string", Required: true, Description: "Azure Blob container name."}}

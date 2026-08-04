@@ -19,6 +19,16 @@ go get github.com/cocosip/sharp-store
 Only import the backend packages the application uses. The core package does
 not import any cloud SDK or GORM package.
 
+## API Boundaries
+
+Construction functions return behavior-oriented interfaces: provider `New`
+functions return `store.Backend`, `store.NewBackendRegistry` returns
+`store.BackendCatalog`, and `store.NewFactory` returns `store.ContainerFactory`.
+The management constructors follow the same rule (`management.Repository`,
+`management.Manager`, and `store.ConfigSource`). This keeps applications
+independent from a provider or repository implementation while leaving typed
+provider `Config` structs as ordinary concrete Go data.
+
 ## Quick Start
 
 ```go

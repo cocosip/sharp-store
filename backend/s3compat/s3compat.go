@@ -18,10 +18,10 @@ type ConfigTranslator interface {
 
 type Backend struct {
 	translator ConfigTranslator
-	transport  *s3.Backend
+	transport  store.Backend
 }
 
-func New(translator ConfigTranslator) *Backend {
+func New(translator ConfigTranslator) store.Backend {
 	return &Backend{translator: translator, transport: s3.New()}
 }
 
@@ -38,7 +38,11 @@ func (b *Backend) ValidateConfig(ctx context.Context, values map[string]string) 
 	if err != nil {
 		return err
 	}
-	return b.transport.ValidateConfig(ctx, translated)
+	validator, ok := b.transport.(store.BackendConfigValidator)
+	if !ok {
+		return store.ErrUnsupported
+	}
+	return validator.ValidateConfig(ctx, translated)
 }
 
 func (b *Backend) Save(ctx context.Context, request store.SaveRequest) (string, error) {

@@ -29,7 +29,7 @@ type NamingServiceSet struct {
 	normalizers []KeyNormalizer
 }
 
-func NewNamingService(normalizers ...KeyNormalizer) *NamingServiceSet {
+func NewNamingService(normalizers ...KeyNormalizer) NamingService {
 	return &NamingServiceSet{normalizers: append([]KeyNormalizer(nil), normalizers...)}
 }
 

@@ -11,7 +11,12 @@ type Source struct {
 	cache      Cache
 }
 
-func NewSource(repository Reader, cache Cache) *Source {
+type InvalidatableSource interface {
+	store.ConfigSource
+	Invalidate(ctx context.Context, key store.ContainerKey, scope store.Scope) error
+}
+
+func NewSource(repository Reader, cache Cache) InvalidatableSource {
 	return &Source{repository: repository, cache: cache}
 }
 

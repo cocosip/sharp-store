@@ -23,7 +23,7 @@ const (
 
 type Backend struct{ clients sync.Map }
 
-func New() *Backend           { return &Backend{} }
+func New() store.Backend      { return &Backend{} }
 func (*Backend) Name() string { return Name }
 func (*Backend) ConfigOptions() []store.ConfigOption {
 	return []store.ConfigOption{{Name: EndpointKey, Type: "string", Required: true}, {Name: BucketKey, Type: "string", Required: true}, {Name: AccessKeyIDKey, Type: "string", Required: true, Sensitive: true}, {Name: AccessKeySecretKey, Type: "string", Required: true, Sensitive: true}}

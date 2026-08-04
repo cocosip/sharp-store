@@ -4,6 +4,11 @@ Register only the providers used by the application. `BackendRegistry.List()`
 returns the same field metadata for management UIs, while typed `Config`
 values are the preferred code configuration API.
 
+Each provider's `New()` returns `store.Backend`. Configuration metadata and
+validation are catalog operations, so retain the result of
+`store.NewBackendRegistry` as `store.BackendCatalog` when the application
+needs `List` or `ValidateConfig`.
+
 ```go
 backends := store.NewBackendRegistry(
     filesystem.New(), s3.New(), minio.New(), azure.New(),

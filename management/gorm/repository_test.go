@@ -20,10 +20,11 @@ func TestRepositoryCreatesAndFindsTenantContainer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	repository := New(db)
-	if err := db.Table(repository.TableName()).AutoMigrate(&ContainerModel{}); err != nil {
+	options := Options{Table: "app_store_containers"}
+	if err := db.Table(TableName(options)).AutoMigrate(&ContainerModel{}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
+	repository := New(db, options)
 
 	container := management.Container{
 		ID:       "container-a",

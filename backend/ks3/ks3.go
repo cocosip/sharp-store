@@ -20,7 +20,7 @@ const (
 	RegionKey    = "region"
 )
 
-func New() *s3compat.Backend {
+func New() store.Backend {
 	return s3compat.New(configTranslator{})
 }
 

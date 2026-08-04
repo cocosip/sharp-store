@@ -31,16 +31,20 @@ type Options struct {
 	Table string
 }
 
-func New(db *gormio.DB, options ...Options) *Repository {
+// TableName returns the table selected by options. Applications use it when
+// migrating ContainerModel with their own GORM lifecycle.
+func TableName(options ...Options) string {
 	table := DefaultTableName
 	if len(options) != 0 && options[0].Table != "" {
 		table = options[0].Table
 	}
-	return &Repository{db: db, table: table}
+	return table
 }
 
-func (r *Repository) TableName() string {
-	return r.table
+// New creates a configuration repository. Schema migration remains owned by
+// the application; use TableName with ContainerModel before using New.
+func New(db *gormio.DB, options ...Options) management.Repository {
+	return &Repository{db: db, table: TableName(options...)}
 }
 
 func (r *Repository) Create(ctx context.Context, container management.Container) error {

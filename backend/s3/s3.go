@@ -46,7 +46,7 @@ type Backend struct {
 	clients sync.Map
 }
 
-func New() *Backend {
+func New() store.Backend {
 	return &Backend{}
 }
 

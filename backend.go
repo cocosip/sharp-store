@@ -74,11 +74,17 @@ type ConfigValidator interface {
 	ValidateConfig(ctx context.Context, name string, values map[string]string) error
 }
 
+type BackendCatalog interface {
+	BackendResolver
+	ConfigValidator
+	List() []BackendInfo
+}
+
 type BackendRegistry struct {
 	backends map[string]Backend
 }
 
-func NewBackendRegistry(backends ...Backend) *BackendRegistry {
+func NewBackendRegistry(backends ...Backend) BackendCatalog {
 	registry := &BackendRegistry{backends: make(map[string]Backend, len(backends))}
 	for _, backend := range backends {
 		if backend != nil {

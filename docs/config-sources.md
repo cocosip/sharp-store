@@ -58,11 +58,17 @@ GORM support belongs to `management/gorm` and is optional. It persists
 container configuration in one table; it never stores file content. The host
 owns migration, including table naming and ordering.
 
+`managementgorm.New` returns `management.Repository`; it intentionally does
+not expose a GORM-specific repository object. Use the standalone
+`managementgorm.TableName(options...)` helper together with the exported
+`ContainerModel` during the host application's migration phase.
+
 ```go
-repo := managementgorm.New(db, managementgorm.Options{Table: "app_store_containers"})
-if err := db.Table(repo.TableName()).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
+options := managementgorm.Options{Table: "app_store_containers"}
+if err := db.Table(managementgorm.TableName(options)).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
     return err
 }
+repo := managementgorm.New(db, options)
 
 cache := management.NewMemoryCache()
 configs := management.NewSource(repo, cache)

@@ -23,7 +23,7 @@ func TestServiceUpdateInvalidatesCachedContainerConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	if err := db.Table(managementgorm.DefaultTableName).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
+	if err := db.Table(managementgorm.TableName()).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestServiceDeleteInvalidatesCachedContainerConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	if err := db.Table(managementgorm.DefaultTableName).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
+	if err := db.Table(managementgorm.TableName()).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
@@ -117,7 +117,7 @@ func TestServiceCreateRejectsDuplicateKeyWithinTenant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	if err := db.Table(managementgorm.DefaultTableName).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
+	if err := db.Table(managementgorm.TableName()).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 
@@ -149,7 +149,7 @@ func TestServiceCreateValidatesBackendConfigBeforePersisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	if err := db.Table(managementgorm.DefaultTableName).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
+	if err := db.Table(managementgorm.TableName()).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 

@@ -15,6 +15,11 @@ type Decoder interface {
 	Decode(reader io.Reader) (map[store.ContainerKey]store.ContainerConfig, error)
 }
 
+type ReloadableSource interface {
+	store.ConfigSource
+	Reload(ctx context.Context) error
+}
+
 type JSONDecoder struct{}
 
 func (JSONDecoder) Decode(reader io.Reader) (map[store.ContainerKey]store.ContainerConfig, error) {
@@ -35,7 +40,7 @@ type Source struct {
 	configs map[store.ContainerKey]store.ContainerConfig
 }
 
-func Open(path string, decoder Decoder) (*Source, error) {
+func Open(path string, decoder Decoder) (ReloadableSource, error) {
 	if decoder == nil {
 		return nil, errors.New("configuration decoder is required")
 	}

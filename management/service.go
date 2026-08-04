@@ -12,7 +12,13 @@ type Service struct {
 	validator  store.ConfigValidator
 }
 
-func NewService(repository Repository, cache Cache) *Service {
+type Manager interface {
+	Create(ctx context.Context, container Container) error
+	Update(ctx context.Context, container Container) error
+	Delete(ctx context.Context, id string) error
+}
+
+func NewService(repository Repository, cache Cache) Manager {
 	return NewServiceWithValidator(repository, cache, nil)
 }
 
@@ -20,7 +26,7 @@ func NewServiceWithValidator(
 	repository Repository,
 	cache Cache,
 	validator store.ConfigValidator,
-) *Service {
+) Manager {
 	return &Service{repository: repository, cache: cache, validator: validator}
 }
 

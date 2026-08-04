@@ -17,6 +17,11 @@ type Container interface {
 	AccessURL(ctx context.Context, fileID string, options AccessURLOptions) (string, error)
 }
 
+type ContainerFactory interface {
+	Open(ctx context.Context, key ContainerKey) (Container, error)
+	OpenWithScope(ctx context.Context, key ContainerKey, scope Scope) (Container, error)
+}
+
 type Factory struct {
 	configs  ConfigSource
 	backends BackendResolver
@@ -31,7 +36,7 @@ type FactoryOptions struct {
 	Keys   KeyBuilder
 }
 
-func NewFactory(configs ConfigSource, backends BackendResolver) (*Factory, error) {
+func NewFactory(configs ConfigSource, backends BackendResolver) (ContainerFactory, error) {
 	return NewFactoryWithOptions(configs, backends, FactoryOptions{})
 }
 
@@ -39,7 +44,7 @@ func NewFactoryWithOptions(
 	configs ConfigSource,
 	backends BackendResolver,
 	options FactoryOptions,
-) (*Factory, error) {
+) (ContainerFactory, error) {
 	if configs == nil {
 		return nil, errors.New("config source is required")
 	}

@@ -23,7 +23,7 @@ type MemoryCache struct {
 	entries map[CacheKey]Container
 }
 
-func NewMemoryCache() *MemoryCache {
+func NewMemoryCache() Cache {
 	return &MemoryCache{entries: make(map[CacheKey]Container)}
 }
 
