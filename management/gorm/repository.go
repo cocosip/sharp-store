@@ -9,7 +9,9 @@ import (
 	gormio "gorm.io/gorm"
 )
 
-type containerModel struct {
+const DefaultTableName = "store_containers"
+
+type ContainerModel struct {
 	ID         string `gorm:"primaryKey;size:64"`
 	TenantID   string `gorm:"not null;size:128;uniqueIndex:idx_store_container_tenant_key"`
 	Key        string `gorm:"column:container_key;not null;size:255;uniqueIndex:idx_store_container_tenant_key"`
@@ -20,20 +22,25 @@ type containerModel struct {
 	Version    uint64 `gorm:"not null"`
 }
 
-func (containerModel) TableName() string {
-	return "store_containers"
-}
-
 type Repository struct {
-	db *gormio.DB
+	db    *gormio.DB
+	table string
 }
 
-func New(db *gormio.DB) *Repository {
-	return &Repository{db: db}
+type Options struct {
+	Table string
 }
 
-func Migrate(db *gormio.DB) error {
-	return db.AutoMigrate(&containerModel{})
+func New(db *gormio.DB, options ...Options) *Repository {
+	table := DefaultTableName
+	if len(options) != 0 && options[0].Table != "" {
+		table = options[0].Table
+	}
+	return &Repository{db: db, table: table}
+}
+
+func (r *Repository) TableName() string {
+	return r.table
 }
 
 func (r *Repository) Create(ctx context.Context, container management.Container) error {
@@ -41,12 +48,12 @@ func (r *Repository) Create(ctx context.Context, container management.Container)
 	if err != nil {
 		return err
 	}
-	return r.db.WithContext(ctx).Create(&model).Error
+	return r.db.WithContext(ctx).Table(r.table).Create(&model).Error
 }
 
 func (r *Repository) Get(ctx context.Context, id string) (management.Container, bool, error) {
-	var model containerModel
-	err := r.db.WithContext(ctx).First(&model, "id = ?", id).Error
+	var model ContainerModel
+	err := r.db.WithContext(ctx).Table(r.table).First(&model, "id = ?", id).Error
 	if err != nil {
 		if err == gormio.ErrRecordNotFound {
 			return management.Container{}, false, nil
@@ -65,7 +72,7 @@ func (r *Repository) Update(ctx context.Context, container management.Container)
 	if err != nil {
 		return err
 	}
-	result := r.db.WithContext(ctx).Model(&containerModel{}).
+	result := r.db.WithContext(ctx).Table(r.table).Model(&ContainerModel{}).
 		Where("id = ?", model.ID).
 		Updates(map[string]any{
 			"tenant_id":     model.TenantID,
@@ -80,7 +87,7 @@ func (r *Repository) Update(ctx context.Context, container management.Container)
 }
 
 func (r *Repository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&containerModel{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Table(r.table).Delete(&ContainerModel{}, "id = ?", id).Error
 }
 
 func (r *Repository) Find(
@@ -88,8 +95,8 @@ func (r *Repository) Find(
 	key store.ContainerKey,
 	scope store.Scope,
 ) (management.Container, bool, error) {
-	var model containerModel
-	err := r.db.WithContext(ctx).
+	var model ContainerModel
+	err := r.db.WithContext(ctx).Table(r.table).
 		Where("tenant_id = ? AND container_key = ?", scope.Tenant.ID, string(key)).
 		First(&model).Error
 	if err != nil {
@@ -105,12 +112,12 @@ func (r *Repository) Find(
 	return container, true, nil
 }
 
-func toModel(container management.Container) (containerModel, error) {
+func toModel(container management.Container) (ContainerModel, error) {
 	values, err := json.Marshal(container.Config.Values)
 	if err != nil {
-		return containerModel{}, err
+		return ContainerModel{}, err
 	}
-	return containerModel{
+	return ContainerModel{
 		ID:         container.ID,
 		TenantID:   container.TenantID,
 		Key:        string(container.Key),
@@ -122,7 +129,7 @@ func toModel(container management.Container) (containerModel, error) {
 	}, nil
 }
 
-func fromModel(model containerModel) (management.Container, error) {
+func fromModel(model ContainerModel) (management.Container, error) {
 	values := make(map[string]string)
 	if err := json.Unmarshal(model.Values, &values); err != nil {
 		return management.Container{}, err
