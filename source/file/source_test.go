@@ -113,3 +113,34 @@ root = "D:/toml"
 		t.Fatalf("root = %q, want %q", got, "D:/toml")
 	}
 }
+
+func TestSourceReloadRejectsInvalidYAMLWithoutReplacingSnapshot(t *testing.T) {
+	path := t.TempDir() + "/storage.yaml"
+	if err := os.WriteFile(path, []byte(`containers:
+  dicom:
+    backend: filesystem
+    values:
+      root: D:/stable
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	source, err := Open(path, YAMLDecoder{})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte("containers: ["), 0o600); err != nil {
+		t.Fatalf("WriteFile() invalid update error = %v", err)
+	}
+
+	if err := source.Reload(context.Background()); err == nil {
+		t.Fatal("Reload() error = nil, want invalid YAML error")
+	}
+	config, err := source.Load(context.Background(), "dicom", store.Scope{})
+	if err != nil {
+		t.Fatalf("Load() after rejected reload error = %v", err)
+	}
+	if got := config.Values["root"]; got != "D:/stable" {
+		t.Fatalf("root after rejected reload = %q, want %q", got, "D:/stable")
+	}
+}
