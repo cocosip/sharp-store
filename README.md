@@ -2,9 +2,9 @@
 
 `sharp-store` is a Go 1.25 file-storage library. A `Factory` opens a public
 `Container`; the container builds a tenant-aware object key and delegates file
-operations to the configured backend. Configuration loading is independent of
-storage: an application selects exactly one `store.ConfigSource` implementation
-for a factory.
+operations to the configured backend. Configuration lookup and caching are
+replaceable capabilities. `source/static` provides built-in in-memory
+configuration, while an in-memory cache is used by default.
 
 Supported backends are local filesystem, S3, AWS S3, MinIO, KS3, Azure Blob,
 Aliyun OSS, and Huawei OBS. FastDFS is not included because this repository has
@@ -21,14 +21,13 @@ not import any cloud SDK or ORM package.
 
 ## API Boundaries
 
-Construction functions return behavior-oriented interfaces: provider `New`
-functions return `store.Backend`, `store.NewBackendRegistry` returns
-`store.BackendCatalog`, and `store.NewFactory` returns `store.ContainerFactory`.
-The management constructors follow the same rule: `management.NewService`
-returns `management.Manager`, and `management.NewSource` returns a
-`store.ConfigSource` implementation. This keeps applications independent from
-a provider or repository implementation while leaving typed provider `Config`
-structs as ordinary concrete Go data.
+Provider `New` functions return `store.Backend`, and
+`store.NewBackendRegistry` returns `store.BackendCatalog`. `store.NewFactory`
+returns a concrete `*store.Factory`; applications that want a narrow dependency
+can use the `store.ContainerFactory` interface. The factory depends only on
+`store.ConfigSource`, `store.ConfigCache`, and
+`store.BackendResolver`, so applications can adapt existing database, cache,
+and tenant types without importing infrastructure into this library.
 
 ## Quick Start
 
@@ -51,12 +50,14 @@ func main() {
         }),
     })
     backends := store.NewBackendRegistry(filesystem.New())
-    factory, err := store.NewFactory(configs, backends)
+    factory, err := store.NewFactory(
+        store.NewConfigOptions(configs),
+        store.NewContainerOptions(backends),
+    )
     if err != nil { panic(err) }
 
-    container, err := factory.OpenWithScope(context.Background(), "documents", store.Scope{
-        Tenant: store.Tenant{ID: "tenant-1", Code: "acme"},
-    })
+    tenant := store.DefaultTenantContext{ID: "tenant-1", Code: "acme", Name: "Acme"}
+    container, err := factory.Open(context.Background(), "documents", tenant)
     if err != nil { panic(err) }
     _, err = container.Save(context.Background(), "reports/a.pdf", bytes.NewReader([]byte("data")), ".pdf", false)
     if err != nil { panic(err) }
@@ -71,22 +72,23 @@ missing object; `GetOrNil` returns a nil reader instead. `Save` returns
 ## Architecture
 
 ```text
-ConfigSource.Load(key, scope) -> ContainerConfig -> Factory.Open -> Container
-                                                              |
-                                                  Backend.Save/Get/Delete/...
+ConfigCache.Get(name, tenant) ---- hit ----> ContainerConfig
+             | miss                            |
+             v                                 v
+ConfigSource.Load(name, tenant) -> cache -> Factory.Open -> Container -> Backend
 ```
 
-`ContainerConfig` is a snapshot. A container already opened keeps its selected
-backend configuration; a new `Factory.Open` call observes a reloaded or updated
-source.
+`ContainerConfig` and tenant information are snapshots. A container already
+opened keeps its selected backend configuration; a new `Factory.Open` call uses
+the current cached or source configuration.
 
 ## Concurrency
 
 A `Container` is safe for concurrent use by multiple goroutines. One opened
 container can perform independent `Save`, `Get`, `Download`, and other file
-operations concurrently. The container snapshots its configuration and scope
-when opened, so subsequent mutation of caller-owned configuration or
-`Scope.Values` data does not affect its operations.
+operations concurrently. The container snapshots its configuration and tenant
+information when opened, so subsequent mutation of caller-owned data does not
+affect its operations.
 
 Callers retain ownership of mutable method inputs: do not share an `io.Reader`
 or destination file path across concurrent calls unless the caller synchronizes
@@ -101,32 +103,38 @@ Every backend exposes a typed `Config` that implements `store.BackendConfig`.
 Convert it with `store.NewContainerConfig` before passing it to a source.
 
 ```go
-config := store.NewContainerConfig(minio.Config{
-    Bucket: "archive", Endpoint: "minio.example:9000",
-    AccessKey: "access", SecretKey: "secret", UseSSL: true,
-})
+config := store.NewContainerConfig(
+    minio.NewConfig().
+        WithBucket("archive").
+        WithEndpoint("minio.example:9000").
+        WithCredentials("access", "secret").
+        WithSSL(true),
+)
+
+typed, err := minio.ParseConfig(config)
 ```
 
 See [provider configuration](docs/providers.md) for every backend and
-[configuration sources](docs/config-sources.md) for code, JSON, YAML, TOML,
-and optional application-owned persistence.
+[configuration sources](docs/config-sources.md) for built-in memory
+configuration and application-owned Viper, file, or database integration.
 
 ## Tenant Scope
 
-The default key builder produces `{prefix}/{tenant-code-or-id}/{file-id}`. A
-container with `TenantMode: store.TenantShared` clears tenant data before keys
-are built. `ScopeResolver`, `NamingService`, and `KeyBuilder` are optional
-factory dependencies for applications that need custom tenancy or names.
+Applications pass a `store.TenantContext` to every `Factory.Open` call.
+sharp-store does not parse JWTs, request headers, or application tenant state.
+The default key builder produces `{tenant-code-or-id}/{file-id}` for
+`TenantScoped` configuration and `{file-id}` for `TenantShared` configuration.
+`NamingService` and `KeyBuilder` remain replaceable container capabilities.
 
-## Management
+## External Integration
 
-Database-backed management is optional. Applications can use `source/static`
-or `source/file` with the complete `Factory` and `Container` API without a
-database. Applications that need dynamic persistence can use `management`,
-which provides cache-aside configuration loading and management services over
-small `management.Reader` and `management.Repository` interfaces.
+Configuration management remains outside sharp-store. A database-backed
+application implements `ConfigSource` to load one configuration by container
+name and tenant, and adapts its existing cache to `ConfigCache`. The same cache
+instance is shared with the application's configuration-write service so a
+successful database create/update calls `Set` and a successful delete calls
+`Delete`. File-operation callers never manage configuration caches.
 
-The application owns any Gorm, Ent, SQL, or remote-service adapter, including
-its models, migrations, transactions, serialization, and error translation.
-This module does not provide an ORM adapter. See
-[optional dynamic management](docs/config-sources.md#optional-dynamic-management).
+See [configuration sources](docs/config-sources.md) for complete external and
+built-in initialization examples. Both use the same
+`factory.Open(ctx, containerName, tenant)` runtime API.

@@ -17,13 +17,13 @@ func TestSourceLoadReturnsIndependentConfigSnapshot(t *testing.T) {
 		},
 	})
 
-	config, err := source.Load(context.Background(), "archive", store.Scope{})
+	config, err := source.Load(context.Background(), "archive", store.NoTenant())
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 	config.Values["root"] = "D:/mutated"
 
-	loadedAgain, err := source.Load(context.Background(), "archive", store.Scope{})
+	loadedAgain, err := source.Load(context.Background(), "archive", store.NoTenant())
 	if err != nil {
 		t.Fatalf("Load() second error = %v", err)
 	}

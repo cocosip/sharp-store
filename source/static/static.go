@@ -21,7 +21,7 @@ func New(configs map[store.ContainerKey]store.ContainerConfig) store.ConfigSourc
 func (s *Source) Load(
 	_ context.Context,
 	key store.ContainerKey,
-	_ store.Scope,
+	_ store.TenantContext,
 ) (store.ContainerConfig, error) {
 	config, ok := s.configs[key]
 	if !ok {

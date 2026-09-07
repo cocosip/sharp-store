@@ -14,20 +14,22 @@ func TestFactoryOpenUsesConfigSourceAndDelegatesSave(t *testing.T) {
 
 	backend := newMemoryBackend("memory")
 	factory, err := NewFactory(
-		staticConfigSource{configs: map[ContainerKey]ContainerConfig{
+		NewConfigOptions(staticConfigSource{configs: map[ContainerKey]ContainerConfig{
 			"dicom": {Backend: "memory"},
-		}},
-		NewBackendRegistry(backend),
+		}}),
+		NewContainerOptions(NewBackendRegistry(backend)),
 	)
 	if err != nil {
 		t.Fatalf("NewFactory() error = %v", err)
 	}
 
-	container, err := factory.OpenWithScope(context.Background(), "dicom", Scope{
-		Tenant: Tenant{ID: "tenant-a", Code: "alpha"},
-	})
+	container, err := factory.Open(
+		context.Background(),
+		"dicom",
+		DefaultTenantContext{ID: "tenant-a", Code: "alpha"},
+	)
 	if err != nil {
-		t.Fatalf("OpenWithScope() error = %v", err)
+		t.Fatalf("Open() error = %v", err)
 	}
 
 	if got := container.Configuration().Backend; got != "memory" {
@@ -53,26 +55,27 @@ func TestFactoryOpenUsesConfigSourceAndDelegatesSave(t *testing.T) {
 	}
 }
 
-func TestFactoryOpenAppliesScopeNamingAndKeyBuilder(t *testing.T) {
+func TestFactoryOpenAppliesTenantNamingAndKeyBuilder(t *testing.T) {
 	t.Parallel()
 
 	backend := newMemoryBackend("memory")
-	factory, err := NewFactoryWithOptions(
-		staticConfigSource{configs: map[ContainerKey]ContainerConfig{
+	factory, err := NewFactory(
+		NewConfigOptions(staticConfigSource{configs: map[ContainerKey]ContainerConfig{
 			"images": {Backend: "memory"},
-		}},
-		NewBackendRegistry(backend),
-		FactoryOptions{
-			Scopes: fixedScopeResolver{scope: Scope{Tenant: Tenant{ID: "tenant-a", Code: "alpha"}}},
-			Names:  lowercaseNamingService{},
-			Keys:   containerAwareKeyBuilder{},
-		},
+		}}),
+		NewContainerOptions(NewBackendRegistry(backend)).
+			WithNamingService(lowercaseNamingService{}).
+			WithKeyBuilder(containerAwareKeyBuilder{}),
 	)
 	if err != nil {
-		t.Fatalf("NewFactoryWithOptions() error = %v", err)
+		t.Fatalf("NewFactory() error = %v", err)
 	}
 
-	container, err := factory.Open(context.Background(), "images")
+	container, err := factory.Open(
+		context.Background(),
+		"images",
+		DefaultTenantContext{ID: "tenant-a", Code: "alpha"},
+	)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
@@ -119,14 +122,6 @@ type staticConfigSource struct {
 	configs map[ContainerKey]ContainerConfig
 }
 
-type fixedScopeResolver struct {
-	scope Scope
-}
-
-func (r fixedScopeResolver) Resolve(context.Context) (Scope, error) {
-	return r.scope, nil
-}
-
 type lowercaseNamingService struct{}
 
 func (lowercaseNamingService) Normalize(
@@ -144,7 +139,7 @@ func (lowercaseNamingService) Normalize(
 type containerAwareKeyBuilder struct{}
 
 func (containerAwareKeyBuilder) Build(_ context.Context, request FileRequest) (string, error) {
-	return strings.Join([]string{request.Scope.Tenant.Code, string(request.Container), request.FileID}, "/"), nil
+	return strings.Join([]string{request.Tenant.TenantCode(), string(request.Container), request.FileID}, "/"), nil
 }
 
 type prefixLowercaseNormalizer struct{}
@@ -168,7 +163,7 @@ func (prefixLowercaseNormalizer) NormalizeFile(
 func (s staticConfigSource) Load(
 	_ context.Context,
 	key ContainerKey,
-	_ Scope,
+	_ TenantContext,
 ) (ContainerConfig, error) {
 	config, ok := s.configs[key]
 	if !ok {

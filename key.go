@@ -14,16 +14,15 @@ type KeyBuilder interface {
 type defaultKeyBuilder struct{}
 
 func (defaultKeyBuilder) Build(_ context.Context, request FileRequest) (string, error) {
-	segments := make([]string, 0, 3)
-	if request.Scope.Prefix != "" {
-		segments = append(segments, strings.Trim(request.Scope.Prefix, "/"))
-	}
-	if tenant := request.Scope.Tenant; tenant.ID != "" {
-		identifier := tenant.Code
+	segments := make([]string, 0, 2)
+	if request.Config.TenantMode == TenantScoped && request.Tenant != nil {
+		identifier := request.Tenant.TenantCode()
 		if identifier == "" {
-			identifier = tenant.ID
+			identifier = request.Tenant.TenantID()
 		}
-		segments = append(segments, identifier)
+		if identifier != "" {
+			segments = append(segments, identifier)
+		}
 	}
 	segments = append(segments, strings.Trim(request.FileID, "/"))
 	return strings.Join(segments, "/"), nil

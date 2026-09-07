@@ -14,7 +14,7 @@ type AccessURLOptions struct {
 type container struct {
 	key     ContainerKey
 	config  ContainerConfig
-	scope   Scope
+	tenant  TenantContext
 	backend Backend
 	names   NamingService
 	keys    KeyBuilder
@@ -106,7 +106,7 @@ func (c *container) request(ctx context.Context, fileID string) (FileRequest, er
 	request := FileRequest{
 		Container: normalized.Container,
 		Config:    c.config.Clone(),
-		Scope:     c.scope,
+		Tenant:    c.tenant,
 		FileID:    normalized.FileID,
 	}
 	key, err := c.keys.Build(ctx, request)

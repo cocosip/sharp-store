@@ -11,7 +11,7 @@ import (
 type FileRequest struct {
 	Container ContainerKey
 	Config    ContainerConfig
-	Scope     Scope
+	Tenant    TenantContext
 	FileID    string
 	Key       string
 }

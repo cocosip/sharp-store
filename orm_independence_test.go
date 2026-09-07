@@ -24,3 +24,26 @@ func TestRootModuleGraphExcludesGorm(t *testing.T) {
 		}
 	}
 }
+
+func TestRootPackagesExcludeConfigurationParsers(t *testing.T) {
+	t.Parallel()
+
+	command := exec.Command("go", "list", "-deps", "./...")
+	command.Env = append(os.Environ(), "GOWORK=off")
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("go list -deps ./... error = %v", err)
+	}
+
+	parserPackages := []string{
+		"github.com/pelletier/go-toml/v2",
+		"gopkg.in/yaml.v3",
+	}
+	for _, packagePath := range strings.Fields(string(output)) {
+		for _, parserPackage := range parserPackages {
+			if packagePath == parserPackage || strings.HasPrefix(packagePath, parserPackage+"/") {
+				t.Fatalf("package graph contains configuration parser %q", packagePath)
+			}
+		}
+	}
+}

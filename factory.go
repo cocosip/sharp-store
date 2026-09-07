@@ -21,67 +21,76 @@ type Container interface {
 }
 
 type ContainerFactory interface {
-	Open(ctx context.Context, key ContainerKey) (Container, error)
-	OpenWithScope(ctx context.Context, key ContainerKey, scope Scope) (Container, error)
+	Open(ctx context.Context, key ContainerKey, tenant TenantContext) (Container, error)
 }
 
-type Factory struct {
-	configs  ConfigSource
+type ContainerOptions struct {
 	backends BackendResolver
-	scopes   ScopeResolver
 	names    NamingService
 	keys     KeyBuilder
 }
 
-type FactoryOptions struct {
-	Scopes ScopeResolver
-	Names  NamingService
-	Keys   KeyBuilder
+func NewContainerOptions(backends BackendResolver) *ContainerOptions {
+	return &ContainerOptions{backends: backends}
 }
 
-func NewFactory(configs ConfigSource, backends BackendResolver) (ContainerFactory, error) {
-	return NewFactoryWithOptions(configs, backends, FactoryOptions{})
+func (o *ContainerOptions) WithNamingService(names NamingService) *ContainerOptions {
+	if o != nil {
+		o.names = names
+	}
+	return o
 }
 
-func NewFactoryWithOptions(
-	configs ConfigSource,
-	backends BackendResolver,
-	options FactoryOptions,
-) (ContainerFactory, error) {
+func (o *ContainerOptions) WithKeyBuilder(keys KeyBuilder) *ContainerOptions {
+	if o != nil {
+		o.keys = keys
+	}
+	return o
+}
+
+type Factory struct {
+	configs  *cachedConfigSource
+	backends BackendResolver
+	names    NamingService
+	keys     KeyBuilder
+}
+
+func NewFactory(configs *ConfigOptions, containers *ContainerOptions) (*Factory, error) {
+	if configs == nil || configs.source == nil {
+		return nil, errors.New("config source is required")
+	}
+	cache := configs.cache
+	if cache == nil {
+		cache = NewMemoryConfigCache()
+	}
+	return newFactory(newCachedConfigSource(configs.source, cache), containers)
+}
+
+func newFactory(configs *cachedConfigSource, options *ContainerOptions) (*Factory, error) {
 	if configs == nil {
 		return nil, errors.New("config source is required")
 	}
-	if backends == nil {
+	if options == nil || options.backends == nil {
 		return nil, errors.New("backend resolver is required")
 	}
-	if options.Scopes == nil {
-		options.Scopes = emptyScopeResolver{}
+	names := options.names
+	if names == nil {
+		names = identityNamingService{}
 	}
-	if options.Names == nil {
-		options.Names = identityNamingService{}
+	keys := options.keys
+	if keys == nil {
+		keys = defaultKeyBuilder{}
 	}
-	if options.Keys == nil {
-		options.Keys = defaultKeyBuilder{}
-	}
-	return &Factory{
-		configs:  configs,
-		backends: backends,
-		scopes:   options.Scopes,
-		names:    options.Names,
-		keys:     options.Keys,
-	}, nil
+	return &Factory{configs: configs, backends: options.backends, names: names, keys: keys}, nil
 }
 
-func (f *Factory) Open(ctx context.Context, key ContainerKey) (Container, error) {
-	scope, err := f.scopes.Resolve(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return f.OpenWithScope(ctx, key, scope)
-}
-
-func (f *Factory) OpenWithScope(ctx context.Context, key ContainerKey, scope Scope) (Container, error) {
-	config, err := f.configs.Load(ctx, key, scope)
+func (f *Factory) Open(
+	ctx context.Context,
+	key ContainerKey,
+	tenant TenantContext,
+) (Container, error) {
+	tenant = snapshotTenant(tenant)
+	config, err := f.configs.Load(ctx, key, tenant)
 	if err != nil {
 		return nil, err
 	}
@@ -89,14 +98,10 @@ func (f *Factory) OpenWithScope(ctx context.Context, key ContainerKey, scope Sco
 	if err != nil {
 		return nil, err
 	}
-	if config.TenantMode == TenantShared {
-		scope = scope.withoutTenant()
-	}
-	scope = scope.clone()
 	return &container{
 		key:     key,
 		config:  config.Clone(),
-		scope:   scope,
+		tenant:  tenant,
 		backend: backend,
 		names:   f.names,
 		keys:    f.keys,

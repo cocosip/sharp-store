@@ -14,13 +14,13 @@ import (
 	"github.com/cocosip/sharp-store/backend/filesystem"
 )
 
-func TestContainerSnapshotsScopeWhenOpened(t *testing.T) {
+func TestContainerSnapshotsTenantWhenOpened(t *testing.T) {
 	root := t.TempDir()
-	scope := store.Scope{Values: map[string]string{"prefix": "opened"}}
-	container := openFilesystemContainer(t, root, scope)
+	tenant := &mutableTenantContext{id: "tenant-a", code: "opened", name: "Opened"}
+	container := openFilesystemContainer(t, root, tenant)
 
-	// A container must not retain the caller-owned map after it is opened.
-	scope.Values["prefix"] = "changed"
+	// A container must not retain the caller-owned tenant after it is opened.
+	tenant.code = "changed"
 
 	if _, err := container.Save(
 		context.Background(),
@@ -39,7 +39,7 @@ func TestContainerSnapshotsScopeWhenOpened(t *testing.T) {
 
 func TestContainerSupportsConcurrentOperations(t *testing.T) {
 	root := t.TempDir()
-	container := openFilesystemContainer(t, root, store.Scope{Values: map[string]string{"prefix": "objects"}})
+	container := openFilesystemContainer(t, root, store.DefaultTenantContext{ID: "tenant-a", Code: "objects"})
 
 	const workers = 16
 	errs := make(chan error, workers)
@@ -93,21 +93,20 @@ func TestContainerSupportsConcurrentOperations(t *testing.T) {
 	}
 }
 
-func openFilesystemContainer(t *testing.T, root string, scope store.Scope) store.Container {
+func openFilesystemContainer(t *testing.T, root string, tenant store.TenantContext) store.Container {
 	t.Helper()
 
-	factory, err := store.NewFactoryWithOptions(
-		testConfigSource{config: store.NewContainerConfig(filesystem.Config{Root: root})},
-		store.NewBackendRegistry(filesystem.New()),
-		store.FactoryOptions{Keys: scopeValueKeyBuilder{}},
+	factory, err := store.NewFactory(
+		store.NewConfigOptions(testConfigSource{config: store.NewContainerConfig(filesystem.Config{Root: root})}),
+		store.NewContainerOptions(store.NewBackendRegistry(filesystem.New())).WithKeyBuilder(tenantCodeKeyBuilder{}),
 	)
 	if err != nil {
-		t.Fatalf("NewFactoryWithOptions() error = %v", err)
+		t.Fatalf("NewFactory() error = %v", err)
 	}
 
-	container, err := factory.OpenWithScope(context.Background(), "files", scope)
+	container, err := factory.Open(context.Background(), "files", tenant)
 	if err != nil {
-		t.Fatalf("OpenWithScope() error = %v", err)
+		t.Fatalf("Open() error = %v", err)
 	}
 	return container
 }
@@ -119,13 +118,23 @@ type testConfigSource struct {
 func (s testConfigSource) Load(
 	context.Context,
 	store.ContainerKey,
-	store.Scope,
+	store.TenantContext,
 ) (store.ContainerConfig, error) {
 	return s.config, nil
 }
 
-type scopeValueKeyBuilder struct{}
+type tenantCodeKeyBuilder struct{}
 
-func (scopeValueKeyBuilder) Build(_ context.Context, request store.FileRequest) (string, error) {
-	return request.Scope.Values["prefix"] + "/" + request.FileID, nil
+func (tenantCodeKeyBuilder) Build(_ context.Context, request store.FileRequest) (string, error) {
+	return request.Tenant.TenantCode() + "/" + request.FileID, nil
 }
+
+type mutableTenantContext struct {
+	id   string
+	code string
+	name string
+}
+
+func (t *mutableTenantContext) TenantID() string   { return t.id }
+func (t *mutableTenantContext) TenantCode() string { return t.code }
+func (t *mutableTenantContext) TenantName() string { return t.name }

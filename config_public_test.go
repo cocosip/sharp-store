@@ -14,6 +14,42 @@ import (
 	"github.com/cocosip/sharp-store/backend/s3"
 )
 
+type externalTenant struct {
+	id   string
+	code string
+	name string
+}
+
+func (t externalTenant) TenantID() string   { return t.id }
+func (t externalTenant) TenantCode() string { return t.code }
+func (t externalTenant) TenantName() string { return t.name }
+
+func TestTenantContextSupportsBuiltInAndExternalImplementations(t *testing.T) {
+	tests := []struct {
+		name   string
+		tenant store.TenantContext
+		wantID string
+	}{
+		{
+			name: "built-in",
+			tenant: store.DefaultTenantContext{
+				ID: "tenant-a", Code: "alpha", Name: "Alpha Hospital",
+			},
+			wantID: "tenant-a",
+		},
+		{name: "external adapter", tenant: externalTenant{id: "tenant-b"}, wantID: "tenant-b"},
+		{name: "no tenant", tenant: store.NoTenant(), wantID: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.tenant.TenantID(); got != test.wantID {
+				t.Fatalf("TenantID() = %q, want %q", got, test.wantID)
+			}
+		})
+	}
+}
+
 func TestProviderConfigsExposeContainerSettings(t *testing.T) {
 	tests := []store.BackendConfig{
 		filesystem.Config{Root: "D:/files"}, s3.Config{Bucket: "bucket"}, aws.Config{Bucket: "bucket"},

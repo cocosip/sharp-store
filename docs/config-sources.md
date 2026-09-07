@@ -1,210 +1,91 @@
-# Configuration Sources
+# Configuration Sources and Caches
 
-`Factory` accepts one active `store.ConfigSource`. The source decides where a
-container configuration comes from. It can be replaced with any implementation;
-the storage core does not know whether data came from code, JSON, a database,
-Redis, or a remote service.
+`sharp-store` resolves one `ContainerConfig` from a logical container name and
+the caller-provided `TenantContext`. It does not create, update, delete, or list
+configuration records.
 
-## Code
+```go
+type ConfigSource interface {
+    Load(
+        ctx context.Context,
+        key ContainerKey,
+        tenant TenantContext,
+    ) (ContainerConfig, error)
+}
+```
 
-Use `source/static` for immutable code-owned configuration. It does not perform
-tenant selection; the same config is returned for every scope.
+`ContainerKey` contains only the logical storage name, such as `images` or
+`archive`. It never contains a tenant ID. The built-in cache isolates entries
+internally by `(tenant.TenantID(), ContainerKey)`.
+
+## Built-in Configuration and Cache
+
+Use `source/static` when configuration is supplied by the program. The source
+takes a defensive snapshot and returns the same named configuration for every
+tenant. `NewFactory` supplies a TTL in-memory configuration cache when no custom
+cache is configured.
 
 ```go
 configs := static.New(map[store.ContainerKey]store.ContainerConfig{
-    "images": store.NewContainerConfig(filesystem.Config{Root: "D:/images"}),
+    "images": store.NewContainerConfig(
+        filesystem.NewConfig().WithRoot("D:/data/images"),
+    ),
+    "archive": store.NewContainerConfig(
+        minio.NewConfig().
+            WithBucket("archive").
+            WithEndpoint("127.0.0.1:9000").
+            WithCredentials("access", "secret").
+            WithSSL(false),
+    ),
 })
-factory, err := store.NewFactory(configs, backends)
+
+factory, err := store.NewFactory(
+    store.NewConfigOptions(configs),
+    store.NewContainerOptions(store.NewBackendRegistry(
+        filesystem.New(),
+        minio.New(),
+    )),
+)
+if err != nil {
+    return err
+}
 ```
 
-## Configuration Files
-
-`source/file` supports JSON, YAML, and TOML. `Open` loads the document
-immediately; `Reload(ctx)` first parses a complete replacement snapshot, then
-atomically publishes it. Backend values are always string maps.
-
-Choose the decoder that matches the file format:
+The runtime call is always explicit about tenant information:
 
 ```go
-configs, err := file.Open("configs/storage.yaml", file.YAMLDecoder{})
-if err != nil { return err }
-factory, err := store.NewFactory(configs, backends)
-// Later: err = configs.Reload(ctx)
-```
-
-Use `file.JSONDecoder{}` for `.json`, `file.YAMLDecoder{}` for `.yaml` or
-`.yml`, and `file.TOMLDecoder{}` for `.toml`. Each decoder returns the same
-configuration model.
-
-Complete, equivalent examples for every supported backend are available as
-[`storage.example.json`](storage.example.json),
-[`storage.example.yaml`](storage.example.yaml), and
-[`storage.example.toml`](storage.example.toml). Replace all credential
-placeholders before use; backend values, including booleans, are strings.
-
-### JSON
-
-```json
-{
-  "containers": {
-    "images": {
-      "backend": "minio",
-      "tenantMode": 0,
-      "values": {
-        "bucket": "images",
-        "endpoint": "minio.example:9000",
-        "access_key": "access",
-        "secret_key": "secret",
-        "use_ssl": "true"
-      }
-    }
-  }
+tenant := store.DefaultTenantContext{
+    ID:   "tenant-1",
+    Code: "acme",
+    Name: "Acme Hospital",
 }
+
+container, err := factory.Open(ctx, "images", tenant)
 ```
 
-JSON uses `tenantMode`.
+For host-level storage, pass `store.NoTenant()`.
 
-### YAML
+## Existing Database, Cache, and Tenant Components
 
-```yaml
-containers:
-  images:
-    backend: minio
-    tenant_mode: 0
-    values:
-      bucket: images
-      endpoint: minio.example:9000
-      access_key: access
-      secret_key: secret
-      use_ssl: "true"
-```
-
-### TOML
-
-```toml
-[containers.images]
-backend = "minio"
-tenant_mode = 0
-
-[containers.images.values]
-bucket = "images"
-endpoint = "minio.example:9000"
-access_key = "access"
-secret_key = "secret"
-use_ssl = "true"
-```
-
-YAML and TOML use `tenant_mode`. Use the provider constants (for example
-`minio.BucketKey`) when generating configuration programmatically. Do not
-commit real secrets.
-
-For an unsupported file format, implement `file.Decoder`; only parsing needs
-to be replaced, not the file loading, reload, or `ConfigSource` behavior.
-
-
-## Optional Dynamic Management
-
-A database and the `management` package are not required. `source/static` and
-`source/file` are complete `store.ConfigSource` implementations and can be
-passed directly to `store.NewFactory` as shown above.
-
-Applications that need dynamic configuration persistence can implement
-`management.Reader` for read-only loading or `management.Repository` for
-management writes. The adapter may use Gorm, Ent, `database/sql`, Redis, a
-remote service, or another technology; `sharp-store` does not provide or
-depend on those adapters.
-
-The application supplies its repository when wiring dynamic configuration:
+An application that already stores configuration in a database adapts its
+existing query. The adapter loads only the requested `(tenant, container)`
+record; it does not preload every row during factory initialization.
 
 ```go
-func wireDynamicConfig(
-    repository management.Repository,
-    backends store.BackendCatalog,
-) (store.ContainerFactory, management.Manager, error) {
-    cache := management.NewMemoryCache()
-    configs := management.NewSource(repository, cache)
-    service := management.NewServiceWithValidator(repository, cache, backends)
-    factory, err := store.NewFactory(configs, backends)
-    return factory, service, err
-}
-```
-
-`management.Source` is cache-aside: it first looks up `(tenant ID, container
-key)` in `Cache`, then calls the repository and caches a found record.
-`Service.Create`, `Update`, and `Delete` invalidate affected cache entries.
-Validation delegates to the registered backend before persistence.
-
-An application-owned adapter must follow these rules:
-
-- `Find` matches tenant ID and container key exactly.
-- `Get` matches container ID exactly.
-- Missing `Find` and `Get` results return the zero container, `false`, and a
-  nil error.
-- Query, decoding, context, and persistence failures are returned as errors.
-- The application owns models, schema migrations, table naming, transactions,
-  serialization of `ContainerConfig.Values`, and data-layer error translation.
-
-```go
-func createImagesContainer(ctx context.Context, service management.Manager) error {
-    container := management.Container{
-        ID: "images-acme", TenantID: "tenant-acme", Key: "images", Title: "Images",
-        Config: store.NewContainerConfig(minio.Config{
-            Bucket: "acme-images", Endpoint: "minio.example:9000",
-            AccessKey: "access", SecretKey: "secret", UseSSL: true,
-        }),
-    }
-    return service.Create(ctx, container)
-}
-```
-
-The repository stores only container configuration; file bytes continue to be
-handled by the selected storage backend.
-
-## Tenant Behavior
-
-`Factory.Open(ctx, key)` obtains a scope through `FactoryOptions.Scopes`.
-`OpenWithScope` is preferable when the caller already has explicit tenant data.
-An application-owned repository must perform an exact `(tenant ID, container
-key)` lookup. An empty tenant ID represents a host-level row; it does not fall
-back from a tenant row to a host row. Implement that fallback in a custom
-`Reader` if it is required by the application.
-
-`TenantMode` controls object paths after configuration is loaded:
-
-- `store.TenantScoped` (`0`, default): include tenant in the default key.
-- `store.TenantShared` (`1`): remove tenant data before key generation.
-
-`Scope.Prefix` is prepended to default keys. The default tenant segment uses
-`Tenant.Code` when set, otherwise `Tenant.ID`.
-
-## Custom Sources
-
-Do not compose several sources into a hidden precedence chain. A factory has
-one active `ConfigSource`; choose it when the application starts. Replacing
-the source is the explicit switch between code configuration, a file, GORM,
-Redis, a configuration center, or an HTTP service.
-
-```go
-type ConfigRecord struct {
-    Backend    string
-    TenantMode store.TenantMode
-    Values     map[string]string
+type databaseConfigSource struct {
+    repository ConfigurationRepository
 }
 
-type ConfigClient interface {
-    FindContainer(ctx context.Context, tenantID, key string) (ConfigRecord, bool, error)
-}
-
-type Source struct {
-    client ConfigClient
-}
-
-func (s *Source) Load(
+func (s databaseConfigSource) Load(
     ctx context.Context,
-    key store.ContainerKey,
-    scope store.Scope,
+    name store.ContainerKey,
+    tenant store.TenantContext,
 ) (store.ContainerConfig, error) {
-    record, found, err := s.client.FindContainer(ctx, scope.Tenant.ID, string(key))
+    record, found, err := s.repository.FindByTenantAndName(
+        ctx,
+        tenant.TenantID(),
+        string(name),
+    )
     if err != nil {
         return store.ContainerConfig{}, err
     }
@@ -212,30 +93,221 @@ func (s *Source) Load(
         return store.ContainerConfig{}, store.ErrContainerNotFound
     }
     return store.ContainerConfig{
-        Backend: record.Backend,
-        TenantMode: record.TenantMode,
-        Values: record.Values,
+        Backend:    record.Provider,
+        TenantMode: store.TenantMode(record.TenantMode),
+        Values:     maps.Clone(record.Values),
     }, nil
 }
 ```
 
+The cache adapter receives the same `TenantContext`; it may serialize the
+configuration into Redis, another distributed cache, or an application cache.
+
 ```go
-factory, err := store.NewFactory(&Source{client: client}, backends)
+type configCacheAdapter struct {
+    cache ApplicationCache
+}
+
+func (a configCacheAdapter) Get(
+    ctx context.Context,
+    name store.ContainerKey,
+    tenant store.TenantContext,
+) (store.ContainerConfig, bool, error) {
+    var config store.ContainerConfig
+    found, err := a.cache.Get(ctx, cacheKey(tenant.TenantID(), name), &config)
+    return config, found, err
+}
+
+func (a configCacheAdapter) Set(
+    ctx context.Context,
+    name store.ContainerKey,
+    tenant store.TenantContext,
+    config store.ContainerConfig,
+) error {
+    return a.cache.Set(ctx, cacheKey(tenant.TenantID(), name), config)
+}
+
+func (a configCacheAdapter) Delete(
+    ctx context.Context,
+    name store.ContainerKey,
+    tenant store.TenantContext,
+) error {
+    return a.cache.Delete(ctx, cacheKey(tenant.TenantID(), name))
+}
 ```
 
-The source owns lookup policy. For example, a source may use an exact tenant
-match, explicitly fall back to a host record, or reject host fallback. It must
-return a complete `ContainerConfig`, including backend name and provider values.
-It should return `store.ErrContainerNotFound` for an absent key.
+The application's tenant model is also adapted without exposing its structure
+to sharp-store:
 
-For thousands of container records, do not cache them in `Factory`. Put a
-bounded/cache-aside implementation inside the active source, keyed by the same
-lookup identity used by the source, normally `(tenant ID, container key)`. On
-configuration writes, invalidate that source cache. `management.Source` is the
-built-in example of this pattern.
+```go
+type tenantAdapter struct {
+    tenant *tenantservice.CurrentTenant
+}
 
-To load configuration from more than one external system, write one source
-whose documented policy selects the authoritative result. For example, a
-deployment can use a `RemoteSource` with an explicit fallback to `FileSource`
-only when the remote record is absent. This remains one active source and keeps
-fallback, cache invalidation, and tenant rules in one testable place.
+func (a tenantAdapter) TenantID() string   { return a.tenant.ID }
+func (a tenantAdapter) TenantCode() string { return a.tenant.Code }
+func (a tenantAdapter) TenantName() string { return a.tenant.Name }
+```
+
+Initialization supplies the adapters:
+
+```go
+sharedConfigCache := configCacheAdapter{cache: applicationCache}
+
+factory, err := store.NewFactory(
+    store.NewConfigOptions(databaseConfigSource{repository: repository}).
+        WithCache(sharedConfigCache),
+    store.NewContainerOptions(store.NewBackendRegistry(
+        filesystem.New(),
+        minio.New(),
+        s3.New(),
+    )),
+)
+if err != nil {
+    return err
+}
+```
+
+The runtime call is identical to built-in initialization:
+
+```go
+tenant := tenantAdapter{tenant: currentTenant}
+container, err := factory.Open(ctx, "images", tenant)
+```
+
+The application's configuration-write service owns consistency because it
+knows when its database transaction commits. It shares the same cache adapter:
+
+```go
+// After a successful create or update:
+err := sharedConfigCache.Set(ctx, name, tenant, updatedConfig)
+
+// After a successful delete:
+err := sharedConfigCache.Delete(ctx, name, tenant)
+```
+
+File-operation callers do not update or invalidate configuration caches.
+
+## Application-Owned Parsing
+
+sharp-store does not parse JSON, YAML, TOML, Viper values, environment
+variables, or remote configuration documents. The application owns parsing and
+maps the result to `ContainerConfig`.
+
+A Viper-based application can implement `ConfigSource` directly:
+
+```go
+type viperConfigSource struct {
+    config *viper.Viper
+}
+
+type viperContainerConfig struct {
+    Backend    string            `mapstructure:"backend"`
+    TenantMode store.TenantMode  `mapstructure:"tenant_mode"`
+    Values     map[string]string `mapstructure:"values"`
+}
+
+func (s viperConfigSource) Load(
+    ctx context.Context,
+    name store.ContainerKey,
+    tenant store.TenantContext,
+) (store.ContainerConfig, error) {
+    if err := ctx.Err(); err != nil {
+        return store.ContainerConfig{}, err
+    }
+
+    path := "storage.containers." + string(name)
+    if !s.config.IsSet(path) {
+        return store.ContainerConfig{}, store.ErrContainerNotFound
+    }
+
+    var value viperContainerConfig
+    if err := s.config.UnmarshalKey(path, &value); err != nil {
+        return store.ContainerConfig{}, err
+    }
+    return store.ContainerConfig{
+        Backend:    value.Backend,
+        TenantMode: value.TenantMode,
+        Values:     maps.Clone(value.Values),
+    }, nil
+}
+```
+
+The application decides how tenant information affects the Viper path. The
+example uses one shared configuration per container and therefore does not use
+`tenant`.
+
+For JSON, decode the document in application code and pass the result to the
+built-in memory source:
+
+```go
+var document struct {
+    Containers map[store.ContainerKey]store.ContainerConfig `json:"containers"`
+}
+if err := json.NewDecoder(reader).Decode(&document); err != nil {
+    return err
+}
+
+configs := static.New(document.Containers)
+factory, err := store.NewFactory(
+    store.NewConfigOptions(configs),
+    store.NewContainerOptions(backends),
+)
+```
+
+YAML, TOML, configuration centers, and environment-based configuration follow
+the same boundary: parsing stays in the application, and sharp-store receives a
+`ConfigSource`. When external configuration changes, the application updates or
+deletes the corresponding shared `ConfigCache` entry after publishing its new
+configuration.
+
+## Generic and Provider Configuration
+
+Sources and caches always exchange the generic `ContainerConfig`:
+
+```go
+type ContainerConfig struct {
+    Backend    string
+    TenantMode TenantMode
+    Values     map[string]string
+}
+```
+
+Typed provider configuration converts in both directions:
+
+```go
+generic := store.NewContainerConfig(
+    minio.NewConfig().
+        WithBucket("images").
+        WithEndpoint("minio.example:9000").
+        WithCredentials("access", "secret").
+        WithSSL(true),
+).WithTenantMode(store.TenantScoped)
+
+typed, err := minio.ParseConfig(generic)
+```
+
+Provider values stay strings at the generic boundary. Each provider's
+`ParseConfig` validates its backend name and converts booleans or other typed
+values.
+
+## Tenant Isolation
+
+`TenantContext` contains only the tenant information sharp-store consumes:
+
+```go
+type TenantContext interface {
+    TenantID() string
+    TenantCode() string
+    TenantName() string
+}
+```
+
+- `TenantID` isolates configuration cache entries and is available to custom sources.
+- `TenantCode`, falling back to `TenantID`, is used by the default object key builder.
+- `TenantName` is contextual information available to adapters; it is not part of cache identity.
+- `TenantScoped` includes the tenant segment in the default object key.
+- `TenantShared` omits the tenant segment from the object key.
+
+sharp-store snapshots these three strings during `Open`. It never resolves a
+tenant from JWTs, HTTP headers, RPC metadata, or global application state.

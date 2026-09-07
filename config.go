@@ -15,6 +15,8 @@ var (
 	ErrUnsupported       = errors.New("operation is not supported")
 )
 
+// ContainerKey identifies a logical storage container by name. Tenant identity
+// is passed separately through TenantContext.
 type ContainerKey string
 
 type TenantMode uint8
@@ -49,6 +51,11 @@ func NewContainerConfig(config BackendConfig) ContainerConfig {
 	return ContainerConfig{Backend: config.BackendName(), Values: copy}
 }
 
+func (c ContainerConfig) WithTenantMode(mode TenantMode) ContainerConfig {
+	c.TenantMode = mode
+	return c
+}
+
 func (c ContainerConfig) Clone() ContainerConfig {
 	copy := c
 	if c.Values != nil {
@@ -61,5 +68,5 @@ func (c ContainerConfig) Clone() ContainerConfig {
 }
 
 type ConfigSource interface {
-	Load(ctx context.Context, key ContainerKey, scope Scope) (ContainerConfig, error)
+	Load(ctx context.Context, key ContainerKey, tenant TenantContext) (ContainerConfig, error)
 }

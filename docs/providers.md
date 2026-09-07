@@ -62,19 +62,21 @@ import (
 
 func saveReport(ctx context.Context) error {
     configs := static.New(map[store.ContainerKey]store.ContainerConfig{
-        "reports": store.NewContainerConfig(filesystem.Config{
-            Root: "D:/store/reports",
-        }),
+        "reports": store.NewContainerConfig(
+            filesystem.NewConfig().WithRoot("D:/store/reports"),
+        ),
     })
     backends := store.NewBackendRegistry(filesystem.New())
-    factory, err := store.NewFactory(configs, backends)
+    factory, err := store.NewFactory(
+        store.NewConfigOptions(configs),
+        store.NewContainerOptions(backends),
+    )
     if err != nil {
         return err
     }
 
-    reports, err := factory.OpenWithScope(ctx, "reports", store.Scope{
-        Tenant: store.Tenant{ID: "tenant-42", Code: "acme"},
-    })
+    tenant := store.DefaultTenantContext{ID: "tenant-42", Code: "acme", Name: "Acme"}
+    reports, err := factory.Open(ctx, "reports", tenant)
     if err != nil {
         return err
     }
@@ -86,8 +88,8 @@ func saveReport(ctx context.Context) error {
 With the default key builder, that example stores the object with key
 `acme/2026/summary`. Set `TenantMode: store.TenantShared` on the resulting
 `ContainerConfig` when objects must not be partitioned by tenant. See
-[configuration sources](config-sources.md) for file-backed and GORM-backed
-configuration, including JSON, YAML, and TOML examples for every backend.
+[configuration sources](config-sources.md) for built-in memory configuration
+and application-owned Viper, file, or database adapters.
 
 To enable more than one storage type, import and register each one, then select
 the provider per container configuration:
@@ -99,8 +101,9 @@ backends := store.NewBackendRegistry(
 )
 ```
 
-The `backend` value in a configuration file must match the name in the table.
-All file-source values are strings, including booleans such as `"true"`.
+The `Backend` value returned by a `ConfigSource` must match the name in the
+table. All generic `ContainerConfig.Values` entries are strings, including
+booleans such as `"true"`.
 
 ## Filesystem
 
@@ -254,7 +257,7 @@ if err := backends.ValidateConfig(ctx, "minio", values); err != nil {
 validation and `List()` metadata for management UIs. Treat all access keys,
 secrets, session tokens, and Azure connection strings as secrets. Supply them
 through a secret manager, deployment environment, or protected configuration
-store; the example files use placeholders and must not be used with production
+store; the examples use placeholders and must not be used with production
 credentials.
 
 ## FastDFS
