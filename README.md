@@ -17,17 +17,18 @@ go get github.com/cocosip/sharp-store
 ```
 
 Only import the backend packages the application uses. The core package does
-not import any cloud SDK or GORM package.
+not import any cloud SDK or ORM package.
 
 ## API Boundaries
 
 Construction functions return behavior-oriented interfaces: provider `New`
 functions return `store.Backend`, `store.NewBackendRegistry` returns
 `store.BackendCatalog`, and `store.NewFactory` returns `store.ContainerFactory`.
-The management constructors follow the same rule (`management.Repository`,
-`management.Manager`, and `store.ConfigSource`). This keeps applications
-independent from a provider or repository implementation while leaving typed
-provider `Config` structs as ordinary concrete Go data.
+The management constructors follow the same rule: `management.NewService`
+returns `management.Manager`, and `management.NewSource` returns a
+`store.ConfigSource` implementation. This keeps applications independent from
+a provider or repository implementation while leaving typed provider `Config`
+structs as ordinary concrete Go data.
 
 ## Quick Start
 
@@ -108,7 +109,7 @@ config := store.NewContainerConfig(minio.Config{
 
 See [provider configuration](docs/providers.md) for every backend and
 [configuration sources](docs/config-sources.md) for code, JSON, YAML, TOML,
-and GORM.
+and optional application-owned persistence.
 
 ## Tenant Scope
 
@@ -119,7 +120,13 @@ factory dependencies for applications that need custom tenancy or names.
 
 ## Management
 
-`management` provides a cache-aside `ConfigSource` backed by a small
-`management.Repository` interface. `management/gorm` is optional and stores
-only container configuration, never file bytes. Its schema migration belongs to
-the host application. See [GORM integration](docs/config-sources.md#gorm).
+Database-backed management is optional. Applications can use `source/static`
+or `source/file` with the complete `Factory` and `Container` API without a
+database. Applications that need dynamic persistence can use `management`,
+which provides cache-aside configuration loading and management services over
+small `management.Reader` and `management.Repository` interfaces.
+
+The application owns any Gorm, Ent, SQL, or remote-service adapter, including
+its models, migrations, transactions, serialization, and error translation.
+This module does not provide an ORM adapter. See
+[optional dynamic management](docs/config-sources.md#optional-dynamic-management).

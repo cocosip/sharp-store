@@ -2,8 +2,8 @@
 
 `Factory` accepts one active `store.ConfigSource`. The source decides where a
 container configuration comes from. It can be replaced with any implementation;
-the storage core does not know whether data came from code, JSON, GORM, Redis,
-or a remote service.
+the storage core does not know whether data came from code, JSON, a database,
+Redis, or a remote service.
 
 ## Code
 
@@ -102,60 +102,72 @@ For an unsupported file format, implement `file.Decoder`; only parsing needs
 to be replaced, not the file loading, reload, or `ConfigSource` behavior.
 
 
-## GORM
+## Optional Dynamic Management
 
-GORM support belongs to `management/gorm` and is optional. It persists
-container configuration in one table; it never stores file content. The host
-owns migration, including table naming and ordering.
+A database and the `management` package are not required. `source/static` and
+`source/file` are complete `store.ConfigSource` implementations and can be
+passed directly to `store.NewFactory` as shown above.
 
-`managementgorm.New` returns `management.Repository`; it intentionally does
-not expose a GORM-specific repository object. Use the standalone
-`managementgorm.TableName(options...)` helper together with the exported
-`ContainerModel` during the host application's migration phase.
+Applications that need dynamic configuration persistence can implement
+`management.Reader` for read-only loading or `management.Repository` for
+management writes. The adapter may use Gorm, Ent, `database/sql`, Redis, a
+remote service, or another technology; `sharp-store` does not provide or
+depend on those adapters.
 
-```go
-options := managementgorm.Options{Table: "app_store_containers"}
-if err := db.Table(managementgorm.TableName(options)).AutoMigrate(&managementgorm.ContainerModel{}); err != nil {
-    return err
-}
-repo := managementgorm.New(db, options)
-
-cache := management.NewMemoryCache()
-configs := management.NewSource(repo, cache)
-service := management.NewServiceWithValidator(repo, cache, backends)
-factory, err := store.NewFactory(configs, backends)
-```
-
-Create or update rows through `service`. Validation delegates to the registered
-backend before persistence. `management.Source` is cache-aside: it first looks
-up `(tenant ID, container key)` in `Cache`, then calls the repository, and
-caches a found record. `Service.Create`, `Update`, and `Delete` invalidate the
-affected cache entry.
+The application supplies its repository when wiring dynamic configuration:
 
 ```go
-container := management.Container{
-    ID: "images-acme", TenantID: "tenant-acme", Key: "images", Title: "Images",
-    Config: store.NewContainerConfig(minio.Config{
-        Bucket: "acme-images", Endpoint: "minio.example:9000",
-        AccessKey: "access", SecretKey: "secret", UseSSL: true,
-    }),
+func wireDynamicConfig(
+    repository management.Repository,
+    backends store.BackendCatalog,
+) (store.ContainerFactory, management.Manager, error) {
+    cache := management.NewMemoryCache()
+    configs := management.NewSource(repository, cache)
+    service := management.NewServiceWithValidator(repository, cache, backends)
+    factory, err := store.NewFactory(configs, backends)
+    return factory, service, err
 }
-if err := service.Create(ctx, container); err != nil { return err }
 ```
 
-The bundled repository queries portable GORM APIs and keeps provider values as
-JSON bytes. Applications using another database layer implement
-`management.Repository` (for writes) or `management.Reader` (read-only source)
-without importing GORM.
+`management.Source` is cache-aside: it first looks up `(tenant ID, container
+key)` in `Cache`, then calls the repository and caches a found record.
+`Service.Create`, `Update`, and `Delete` invalidate affected cache entries.
+Validation delegates to the registered backend before persistence.
+
+An application-owned adapter must follow these rules:
+
+- `Find` matches tenant ID and container key exactly.
+- `Get` matches container ID exactly.
+- Missing `Find` and `Get` results return the zero container, `false`, and a
+  nil error.
+- Query, decoding, context, and persistence failures are returned as errors.
+- The application owns models, schema migrations, table naming, transactions,
+  serialization of `ContainerConfig.Values`, and data-layer error translation.
+
+```go
+func createImagesContainer(ctx context.Context, service management.Manager) error {
+    container := management.Container{
+        ID: "images-acme", TenantID: "tenant-acme", Key: "images", Title: "Images",
+        Config: store.NewContainerConfig(minio.Config{
+            Bucket: "acme-images", Endpoint: "minio.example:9000",
+            AccessKey: "access", SecretKey: "secret", UseSSL: true,
+        }),
+    }
+    return service.Create(ctx, container)
+}
+```
+
+The repository stores only container configuration; file bytes continue to be
+handled by the selected storage backend.
 
 ## Tenant Behavior
 
 `Factory.Open(ctx, key)` obtains a scope through `FactoryOptions.Scopes`.
 `OpenWithScope` is preferable when the caller already has explicit tenant data.
-The bundled GORM repository performs an exact `(tenant_id, container_key)`
-lookup. An empty tenant ID represents a host-level row; it does not fall back
-from a tenant row to a host row. Implement that fallback in a custom `Reader`
-if it is required by the application.
+An application-owned repository must perform an exact `(tenant ID, container
+key)` lookup. An empty tenant ID represents a host-level row; it does not fall
+back from a tenant row to a host row. Implement that fallback in a custom
+`Reader` if it is required by the application.
 
 `TenantMode` controls object paths after configuration is loaded:
 
