@@ -50,16 +50,11 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	if err != nil {
 		return "", err
 	}
-	if !r.Overwrite {
-		exists, err := bucket.IsObjectExist(r.Key)
-		if err != nil {
-			return "", err
-		}
-		if exists {
-			return "", store.ErrFileExists
-		}
+	err = bucket.PutObject(r.Key, r.Body, oss.ForbidOverWrite(!r.Overwrite), oss.WithContext(ctx))
+	var serviceError oss.ServiceError
+	if !r.Overwrite && errors.As(err, &serviceError) && serviceError.Code == "FileAlreadyExists" {
+		return "", store.ErrFileExists
 	}
-	err = bucket.PutObject(r.Key, r.Body)
 	return r.FileID, err
 }
 func (b *Backend) Delete(ctx context.Context, r store.FileRequest) (bool, error) {

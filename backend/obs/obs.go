@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -51,16 +52,11 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	if err != nil {
 		return "", err
 	}
-	if !r.Overwrite {
-		exists, err := b.Exists(ctx, r.FileRequest)
-		if err != nil {
-			return "", err
-		}
-		if exists {
-			return "", store.ErrFileExists
-		}
+	_, err = client.PutObject(&obsdk.PutObjectInput{PutObjectBasicInput: obsdk.PutObjectBasicInput{ObjectOperationInput: obsdk.ObjectOperationInput{Bucket: bucket, Key: r.Key}}, Body: r.Body}, obsdk.WithCustomHeader("x-obs-forbid-overwrite", strconv.FormatBool(!r.Overwrite)))
+	var serviceError obsdk.ObsError
+	if !r.Overwrite && errors.As(err, &serviceError) && serviceError.Code == "ObjectAlreadyExists" {
+		return "", store.ErrFileExists
 	}
-	_, err = client.PutObject(&obsdk.PutObjectInput{PutObjectBasicInput: obsdk.PutObjectBasicInput{ObjectOperationInput: obsdk.ObjectOperationInput{Bucket: bucket, Key: r.Key}}, Body: r.Body})
 	return r.FileID, err
 }
 func (b *Backend) Delete(ctx context.Context, r store.FileRequest) (bool, error) {

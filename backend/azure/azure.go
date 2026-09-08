@@ -10,6 +10,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	store "github.com/cocosip/sharp-store"
 )
 
@@ -46,21 +47,21 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	if err != nil {
 		return "", err
 	}
+	options := &azblob.UploadBufferOptions{}
 	if !r.Overwrite {
-		exists, err := b.Exists(ctx, r.FileRequest)
-		if err != nil {
-			return "", err
-		}
-		if exists {
-			return "", store.ErrFileExists
-		}
+		etag := azcore.ETag("*")
+		options.AccessConditions = &blob.AccessConditions{ModifiedAccessConditions: &blob.ModifiedAccessConditions{IfNoneMatch: &etag}}
 	}
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		return "", err
 	}
-	_, err = c.UploadBuffer(ctx, container, r.Key, data, nil)
+	_, err = c.UploadBuffer(ctx, container, r.Key, data, options)
 	if err != nil {
+		var responseError *azcore.ResponseError
+		if !r.Overwrite && errors.As(err, &responseError) && (responseError.ErrorCode == "ConditionNotMet" || responseError.ErrorCode == "BlobAlreadyExists") {
+			return "", store.ErrFileExists
+		}
 		return "", err
 	}
 	return r.FileID, nil

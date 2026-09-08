@@ -203,3 +203,81 @@ func (s *blockingConfigSource) callCount() int {
 	defer s.mu.Unlock()
 	return s.calls
 }
+
+func TestFactory_ConfigFillDoesNotOverwriteMutation(t *testing.T) {
+	for _, deletion := range []bool{false, true} {
+		t.Run(map[bool]string{false: "update", true: "delete"}[deletion], func(t *testing.T) {
+			source := &blockingConfigSource{config: ContainerConfig{Backend: "memory", Values: map[string]string{"version": "old"}}, started: make(chan struct{}), release: make(chan struct{})}
+			cache := NewMemoryConfigCache()
+			factory, err := NewFactory(NewConfigOptions(source).WithCache(cache), NewContainerOptions(NewBackendRegistry(newMemoryBackend("memory"))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			tenant := DefaultTenantContext{ID: "a"}
+			done := make(chan error, 1)
+			go func() { _, err := factory.Open(context.Background(), "files", tenant); done <- err }()
+			<-source.started
+			if deletion {
+				err = cache.Delete(context.Background(), "files", tenant)
+			} else {
+				err = cache.Set(context.Background(), "files", tenant, ContainerConfig{Backend: "memory", Values: map[string]string{"version": "new"}})
+			}
+			close(source.release)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			config, ok, err := cache.Get(context.Background(), "files", tenant)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if deletion {
+				if ok {
+					t.Fatal("deleted entry resurrected by stale fill")
+				}
+			} else if !ok || config.Values["version"] != "new" {
+				t.Fatalf("new cache value overwritten: %#v", config)
+			}
+		})
+	}
+}
+
+type unversionedCache struct {
+	ConfigCache
+	setCalls int
+}
+
+func (c *unversionedCache) Set(ctx context.Context, key ContainerKey, tenant TenantContext, config ContainerConfig) error {
+	c.setCalls++
+	return c.ConfigCache.Set(ctx, key, tenant, config)
+}
+
+func TestFactory_UnversionedCacheIsNotFilled(t *testing.T) {
+	cache := &unversionedCache{ConfigCache: NewMemoryConfigCache()}
+	source := &countingConfigSource{config: ContainerConfig{Backend: "memory"}}
+	factory, err := NewFactory(NewConfigOptions(source).WithCache(cache), NewContainerOptions(NewBackendRegistry(newMemoryBackend("memory"))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	tenant := NoTenant()
+	for range 2 {
+		if _, err := factory.Open(ctx, "files", tenant); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if cache.setCalls != 0 || source.callCount() != 2 {
+		t.Fatalf("cache writes=%d source calls=%d", cache.setCalls, source.callCount())
+	}
+	if err := cache.Set(ctx, "files", tenant, source.config); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := factory.Open(ctx, "files", tenant); err != nil {
+		t.Fatal(err)
+	}
+	if source.callCount() != 2 {
+		t.Fatal("application-populated cache was ignored")
+	}
+}

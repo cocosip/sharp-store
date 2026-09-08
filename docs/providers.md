@@ -114,6 +114,20 @@ filesystem.Config{Root: "D:/store", BaseURL: "https://files.example.test"}
 `Root` is required. `BaseURL` is optional; without it `AccessURL` returns
 `store.ErrUnsupported`. Object keys are validated to prevent root traversal.
 
+Parent-directory segments (`..`) are rejected before path normalization,
+including backslash-separated paths. The default key builder also rejects dot
+segments in file IDs and separators in tenant identifiers so an object cannot
+select a neighboring tenant directory. Custom key builders own their tenant
+layout; filesystem keys still cannot contain parent-directory segments.
+
+Saves write a temporary file in the destination directory and publish it only
+after writing, syncing, and closing succeed. Failed saves leave the existing
+object intact and remove their temporary file. Exclusive saves use hard-link
+creation to publish without replacing an existing object; the filesystem must
+support hard links. Overwrite saves use the filesystem's rename operation and
+preserve existing file permission bits. Atomicity of rename depends on the
+operating system and mounted filesystem.
+
 Use `filesystem` for a local disk, Docker volume, or mounted network file
 system. `root` is the only directory the backend can write to. `BaseURL` does
 not start an HTTP server or expose files by itself: configure the reverse proxy

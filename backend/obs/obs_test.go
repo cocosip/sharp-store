@@ -39,6 +39,14 @@ func TestBackendHonorsObjectContractAgainstLocalEndpoint(t *testing.T) {
 		defer mu.Unlock()
 		switch r.Method {
 		case http.MethodPut:
+			if _, exists := objects[r.URL.Path]; exists && r.Header.Get("x-obs-forbid-overwrite") == "true" {
+				w.Header().Set("Content-Type", "application/xml")
+				w.Header().Set("x-ms-error-code", "ObjectAlreadyExists")
+				w.Header().Set("x-obs-error-code", "ObjectAlreadyExists")
+				w.WriteHeader(409)
+				_, _ = io.WriteString(w, "<Error><Code>ObjectAlreadyExists</Code><Message>exists</Message></Error>")
+				return
+			}
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)

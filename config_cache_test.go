@@ -91,3 +91,43 @@ type externalTenantContext struct{ id string }
 func (t externalTenantContext) TenantID() string { return t.id }
 func (externalTenantContext) TenantCode() string { return "" }
 func (externalTenantContext) TenantName() string { return "" }
+
+func TestMemoryConfigCache_ConditionalFill(t *testing.T) {
+	now := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
+	cache := newMemoryConfigCache(time.Minute, func() time.Time { return now })
+	ctx := context.Background()
+	tenant := DefaultTenantContext{ID: "a"}
+	config := ContainerConfig{Backend: "memory", Values: map[string]string{"value": "original"}}
+	_, ok, version, err := cache.GetWithVersion(ctx, "files", tenant)
+	if err != nil || ok {
+		t.Fatalf("initial read: %t, %v", ok, err)
+	}
+	stored, err := cache.SetIfVersion(ctx, "files", tenant, config, version)
+	if err != nil || !stored {
+		t.Fatalf("fill: %t, %v", stored, err)
+	}
+	config.Values["value"] = "mutated"
+	got, ok, next, err := cache.GetWithVersion(ctx, "files", tenant)
+	if err != nil || !ok || next == version || got.Values["value"] != "original" {
+		t.Fatalf("read: %#v, %t, %q, %v", got, ok, next, err)
+	}
+	if stored, err := cache.SetIfVersion(ctx, "files", tenant, config, version); err != nil || stored {
+		t.Fatalf("stale token accepted: %t, %v", stored, err)
+	}
+	now = now.Add(time.Minute)
+	_, ok, version, err = cache.GetWithVersion(ctx, "files", tenant)
+	if err != nil || ok {
+		t.Fatalf("expired read: %t, %v", ok, err)
+	}
+	if stored, err := cache.SetIfVersion(ctx, "files", tenant, config, version); err != nil || !stored {
+		t.Fatalf("expired fill: %t, %v", stored, err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, _, _, err := cache.GetWithVersion(canceled, "files", tenant); err != context.Canceled {
+		t.Fatalf("canceled read: %v", err)
+	}
+	if _, err := cache.SetIfVersion(canceled, "files", tenant, config, version); err != context.Canceled {
+		t.Fatalf("canceled fill: %v", err)
+	}
+}

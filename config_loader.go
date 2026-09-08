@@ -72,12 +72,20 @@ func (s *cachedConfigSource) Load(
 	s.loads[loadKey] = call
 	s.mu.Unlock()
 
-	call.config, ok, call.err = s.cache.Get(ctx, key, tenant)
+	versioned, canFill := s.cache.(VersionedConfigCache)
+	var version string
+	if canFill {
+		call.config, ok, version, call.err = versioned.GetWithVersion(ctx, key, tenant)
+	} else {
+		call.config, ok, call.err = s.cache.Get(ctx, key, tenant)
+	}
 	if call.err == nil && !ok {
 		call.config, call.err = s.source.Load(ctx, key, tenant)
 		if call.err == nil {
 			call.config = call.config.Clone()
-			call.err = s.cache.Set(ctx, key, tenant, call.config)
+			if canFill {
+				_, call.err = versioned.SetIfVersion(ctx, key, tenant, call.config, version)
+			}
 		}
 	}
 

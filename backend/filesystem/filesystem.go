@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -72,25 +73,54 @@ func (b *Backend) Save(ctx context.Context, request store.SaveRequest) (string, 
 		return "", err
 	}
 
-	flags := os.O_WRONLY | os.O_CREATE
+	var originalMode *os.FileMode
 	if request.Overwrite {
-		flags |= os.O_TRUNC
-	} else {
-		flags |= os.O_EXCL
-	}
-	file, err := os.OpenFile(path, flags, 0o644)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return "", fmt.Errorf("%w: %s", store.ErrFileExists, request.FileID)
+		info, err := os.Stat(path)
+		if err == nil {
+			mode := info.Mode().Perm()
+			originalMode = &mode
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
 		}
+	}
+	temporary := filepath.Join(filepath.Dir(path), ".sharp-store-"+rand.Text())
+	file, err := os.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
 		return "", err
 	}
-	defer func() { _ = file.Close() }()
+	defer func() {
+		_ = file.Close()
+		_ = os.Remove(temporary)
+	}()
+	if originalMode != nil {
+		if err := file.Chmod(*originalMode); err != nil {
+			return "", err
+		}
+	}
 
 	if _, err := io.Copy(file, request.Body); err != nil {
 		return "", err
 	}
 	if err := file.Sync(); err != nil {
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	// Publish only complete files. Link provides atomic create-if-absent across
+	// backend instances and processes, without exposing a partial destination.
+	if request.Overwrite {
+		err = os.Rename(temporary, path)
+	} else {
+		err = os.Link(temporary, path)
+	}
+	if errors.Is(err, os.ErrExist) {
+		return "", fmt.Errorf("%w: %s", store.ErrFileExists, request.FileID)
+	}
+	if err != nil {
 		return "", err
 	}
 	return request.FileID, nil
@@ -200,6 +230,11 @@ func (b *Backend) path(request store.FileRequest) (string, error) {
 	root := request.Config.Values[RootKey]
 	if root == "" {
 		return "", fmt.Errorf("%s configuration is required", RootKey)
+	}
+	for _, segment := range strings.FieldsFunc(request.Key, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if segment == ".." {
+			return "", fmt.Errorf("invalid object key %q", request.Key)
+		}
 	}
 	key := filepath.Clean(filepath.FromSlash(request.Key))
 	if key == "." || key == ".." || filepath.IsAbs(key) || strings.HasPrefix(key, ".."+string(filepath.Separator)) {

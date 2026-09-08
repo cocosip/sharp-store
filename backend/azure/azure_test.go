@@ -43,6 +43,14 @@ func TestBackendHonorsBlobObjectContractAgainstLocalEndpoint(t *testing.T) {
 		defer mu.Unlock()
 		switch r.Method {
 		case http.MethodPut:
+			if _, exists := objects[r.URL.Path]; exists && r.Header.Get("If-None-Match") == "*" {
+				w.Header().Set("Content-Type", "application/xml")
+				w.Header().Set("x-ms-error-code", "ConditionNotMet")
+				w.Header().Set("x-obs-error-code", "ConditionNotMet")
+				w.WriteHeader(412)
+				_, _ = io.WriteString(w, "<Error><Code>ConditionNotMet</Code><Message>exists</Message></Error>")
+				return
+			}
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)

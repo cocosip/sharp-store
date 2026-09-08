@@ -188,6 +188,41 @@ err := sharedConfigCache.Delete(ctx, name, tenant)
 
 File-operation callers do not update or invalidate configuration caches.
 
+### Conditional Cache Filling
+
+Automatic cache filling requires the optional `store.VersionedConfigCache`
+interface. The built-in memory cache implements it. Custom caches that only
+implement `ConfigCache` remain supported: the factory reads application-written
+entries and loads misses from `ConfigSource`, but does not write those results
+back to the cache.
+
+```go
+type VersionedConfigCache interface {
+    ConfigCache
+    GetWithVersion(ctx context.Context, key ContainerKey, tenant TenantContext) (ContainerConfig, bool, string, error)
+    SetIfVersion(ctx context.Context, key ContainerKey, tenant TenantContext, config ContainerConfig, version string) (bool, error)
+}
+```
+
+`GetWithVersion` reads the configuration, hit flag, and opaque version atomically,
+including on a cache miss. `SetIfVersion` atomically compares that version and
+writes only if it is still current; a conflict returns `(false, nil)`. Every
+successful `Set` and `Delete` must invalidate older versions, even when deleting
+an absent entry. Versions must not be reused while an earlier load can still
+complete. Remote cache adapters must implement this comparison in the shared
+cache service, for example with a Redis script or transaction, rather than a
+process-local lock. A separate `Get` followed by `Set` is not sufficient.
+
+The memory cache uses a cache-wide mutation version to avoid retaining per-key
+deletion tombstones. An unrelated mutation may therefore skip one cache fill;
+the next miss can populate it normally. A custom adapter may instead use
+per-key versions with appropriate tombstone lifetime management.
+
+An already-running `Open` can return the configuration snapshot it loaded before
+a concurrent update or deletion. That snapshot will not overwrite the updated
+cache or resurrect a deleted cache entry. Subsequent opens see the application
+update, or reload from the source after deletion.
+
 ## Application-Owned Parsing
 
 sharp-store does not parse JSON, YAML, TOML, Viper values, environment
