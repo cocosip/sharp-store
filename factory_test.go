@@ -40,7 +40,6 @@ func TestFactoryOpenUsesConfigSourceAndDelegatesSave(t *testing.T) {
 		context.Background(),
 		"study/instance",
 		bytes.NewBufferString("pixel-data"),
-		".dcm",
 		false,
 	)
 	if err != nil {
@@ -84,7 +83,6 @@ func TestFactoryOpenAppliesTenantNamingAndKeyBuilder(t *testing.T) {
 		context.Background(),
 		"Study/INSTANCE",
 		bytes.NewBufferString("thumbnail"),
-		".jpg",
 		false,
 	)
 	if err != nil {

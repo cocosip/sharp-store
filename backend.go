@@ -19,7 +19,6 @@ type FileRequest struct {
 type SaveRequest struct {
 	FileRequest
 	Body      io.Reader
-	Extension string
 	Overwrite bool
 }
 

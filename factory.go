@@ -11,7 +11,7 @@ import (
 // method inputs, such as an io.Reader or a destination path.
 type Container interface {
 	Configuration() ContainerConfig
-	Save(ctx context.Context, fileID string, body io.Reader, extension string, overwrite bool) (string, error)
+	Save(ctx context.Context, fileID string, body io.Reader, overwrite bool) (string, error)
 	Delete(ctx context.Context, fileID string) (bool, error)
 	Exists(ctx context.Context, fileID string) (bool, error)
 	Download(ctx context.Context, fileID, destination string) (bool, error)

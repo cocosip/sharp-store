@@ -32,7 +32,6 @@ func TestFactoryUsesBuiltInStaticConfigSource(t *testing.T) {
 		context.Background(),
 		"report.txt",
 		strings.NewReader("content"),
-		"",
 		false,
 	)
 	if err != nil {

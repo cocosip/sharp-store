@@ -22,8 +22,7 @@ func TestBackendSaveAndGetUseConfiguredRoot(t *testing.T) {
 			FileID: "instance",
 			Key:    "tenant-a/studies/instance.dcm",
 		},
-		Body:      bytes.NewBufferString("pixel-data"),
-		Extension: ".dcm",
+		Body: bytes.NewBufferString("pixel-data"),
 	}
 
 	fileID, err := backend.Save(context.Background(), request)

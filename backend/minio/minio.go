@@ -33,10 +33,10 @@ func (configTranslator) Name() string {
 func (configTranslator) ConfigOptions() []store.ConfigOption {
 	return []store.ConfigOption{
 		{Name: BucketKey, Type: "string", Required: true, Example: "dicom-archive", Description: "MinIO bucket name."},
-		{Name: EndpointKey, Type: "string", Required: true, Example: "minio.example.test:9000", Description: "MinIO endpoint, with or without a URL scheme."},
+		{Name: EndpointKey, Type: "string", Required: true, Example: "minio.example.test:9000", Description: "MinIO host or IP with an optional port, without a URL scheme."},
 		{Name: AccessKeyKey, Type: "string", Required: true, Sensitive: true, Description: "MinIO access key."},
 		{Name: SecretKeyKey, Type: "string", Required: true, Sensitive: true, Description: "MinIO secret key."},
-		{Name: UseSSLKey, Type: "bool", Example: "true", Description: "Use HTTPS for an endpoint without a scheme."},
+		{Name: UseSSLKey, Type: "bool", Example: "true", Description: "Use HTTPS for the configured endpoint."},
 		{Name: RegionKey, Type: "string", Example: "us-east-1", Description: "Signing region. Defaults to us-east-1."},
 	}
 }
@@ -57,15 +57,8 @@ func (configTranslator) Translate(values map[string]string) (map[string]string, 
 }
 
 func endpointURL(endpoint, useSSL string) (string, error) {
-	if endpoint == "" {
-		return "", errors.New("endpoint is required")
-	}
-	if strings.Contains(endpoint, "://") {
-		parsed, err := url.ParseRequestURI(endpoint)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return "", errors.New("endpoint must be an absolute URL")
-		}
-		return endpoint, nil
+	if err := validateEndpoint(endpoint); err != nil {
+		return "", err
 	}
 	if useSSL == "true" {
 		return "https://" + endpoint, nil
@@ -74,4 +67,18 @@ func endpointURL(endpoint, useSSL string) (string, error) {
 		return "", errors.New("use_ssl must be a boolean")
 	}
 	return "http://" + endpoint, nil
+}
+
+func validateEndpoint(endpoint string) error {
+	if endpoint == "" {
+		return errors.New("endpoint is required")
+	}
+	if endpoint != strings.TrimSpace(endpoint) || strings.Contains(endpoint, "://") {
+		return errors.New("endpoint must be a host or host:port without a URL scheme")
+	}
+	parsed, err := url.Parse("http://" + endpoint)
+	if err != nil || parsed.Host != endpoint || parsed.Hostname() == "" {
+		return errors.New("endpoint must be a host or host:port without a URL scheme")
+	}
+	return nil
 }

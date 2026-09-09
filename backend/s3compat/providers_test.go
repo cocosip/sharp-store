@@ -46,7 +46,7 @@ func TestS3CompatibleProvidersHonorObjectContract(t *testing.T) {
 			backend: minio.New(),
 			values: map[string]string{
 				minio.BucketKey:    "archive",
-				minio.EndpointKey:  server.URL,
+				minio.EndpointKey:  server.Listener.Addr().String(),
 				minio.AccessKeyKey: "access",
 				minio.SecretKeyKey: "secret",
 				minio.UseSSLKey:    "false",
@@ -57,7 +57,7 @@ func TestS3CompatibleProvidersHonorObjectContract(t *testing.T) {
 			backend: ks3.New(),
 			values: map[string]string{
 				ks3.BucketKey:    "archive",
-				ks3.EndpointKey:  server.URL,
+				ks3.EndpointKey:  server.Listener.Addr().String(),
 				ks3.AccessKeyKey: "access",
 				ks3.SecretKeyKey: "secret",
 				ks3.ProtocolKey:  "http",

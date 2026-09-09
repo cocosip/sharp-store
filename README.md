@@ -59,7 +59,7 @@ func main() {
     tenant := store.DefaultTenantContext{ID: "tenant-1", Code: "acme", Name: "Acme"}
     container, err := factory.Open(context.Background(), "documents", tenant)
     if err != nil { panic(err) }
-    _, err = container.Save(context.Background(), "reports/a.pdf", bytes.NewReader([]byte("data")), ".pdf", false)
+    _, err = container.Save(context.Background(), "reports/a.pdf", bytes.NewReader([]byte("data")), false)
     if err != nil { panic(err) }
 }
 ```

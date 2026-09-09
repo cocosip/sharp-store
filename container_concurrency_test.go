@@ -26,7 +26,6 @@ func TestContainerSnapshotsTenantWhenOpened(t *testing.T) {
 		context.Background(),
 		"instance.dcm",
 		bytes.NewBufferString("pixel-data"),
-		".dcm",
 		false,
 	); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -51,7 +50,7 @@ func TestContainerSupportsConcurrentOperations(t *testing.T) {
 
 			fileID := fmt.Sprintf("instances/%02d.dcm", index)
 			content := fmt.Sprintf("pixel-data-%02d", index)
-			if _, err := container.Save(context.Background(), fileID, bytes.NewBufferString(content), ".dcm", false); err != nil {
+			if _, err := container.Save(context.Background(), fileID, bytes.NewBufferString(content), false); err != nil {
 				errs <- fmt.Errorf("Save(%q): %w", fileID, err)
 				return
 			}

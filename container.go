@@ -28,7 +28,6 @@ func (c *container) Save(
 	ctx context.Context,
 	fileID string,
 	body io.Reader,
-	extension string,
 	overwrite bool,
 ) (string, error) {
 	request, err := c.request(ctx, fileID)
@@ -38,7 +37,6 @@ func (c *container) Save(
 	return c.backend.Save(ctx, SaveRequest{
 		FileRequest: request,
 		Body:        body,
-		Extension:   extension,
 		Overwrite:   overwrite,
 	})
 }

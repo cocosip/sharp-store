@@ -80,7 +80,7 @@ func saveReport(ctx context.Context) error {
     if err != nil {
         return err
     }
-    _, err = reports.Save(ctx, "2026/summary", bytes.NewReader([]byte("data")), ".pdf", false)
+    _, err = reports.Save(ctx, "2026/summary.pdf", bytes.NewReader([]byte("data")), false)
     return err
 }
 ```
@@ -182,13 +182,11 @@ minio.Config{
 }
 ```
 
-`Bucket`, `Endpoint`, `AccessKey`, and `SecretKey` are required. Endpoint may
-include a scheme; otherwise `UseSSL` selects `https` or `http`. Path-style
-addressing is always used.
-
-An endpoint such as `https://minio.example:9000` already selects its protocol
-and does not need `UseSSL`. If the endpoint has no scheme, `UseSSL: true` uses
-HTTPS and `false` uses HTTP. `Region` defaults to `us-east-1`.
+`Bucket`, `Endpoint`, `AccessKey`, and `SecretKey` are required. `Endpoint` is
+a domain name or IP address with an optional port and must not include
+`http://`, `https://`, a path, or query parameters. `UseSSL: true` uses HTTPS;
+`false` uses HTTP. Path-style addressing is always used. `Region` defaults to
+`us-east-1`.
 
 ## KS3
 
@@ -199,12 +197,13 @@ ks3.Config{
 }
 ```
 
-`Bucket`, `Endpoint`, `AccessKey`, and `SecretKey` are required. `Protocol`
-is used only for endpoints without a scheme and must be `http` or `https`.
+`Bucket`, `Endpoint`, `AccessKey`, and `SecretKey` are required. `Endpoint` is
+a domain name or IP address with an optional port and must not include
+`http://`, `https://`, a path, or query parameters. `Protocol` must be `http`
+or `https` and defaults to `http`.
 
-Use `ks3` for Kingsoft Cloud KS3. Path-style addressing is always used. For an
-endpoint without a scheme, `Protocol` defaults to `https`; an endpoint with a
-scheme keeps the supplied scheme. `Region` defaults to `us-east-1`.
+Use `ks3` for Kingsoft Cloud KS3. Path-style addressing is always used.
+`Region` defaults to `us-east-1`.
 
 ## Azure Blob
 

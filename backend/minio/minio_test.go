@@ -34,3 +34,20 @@ func TestConfigTranslatorRejectsInvalidUseSSL(t *testing.T) {
 		t.Fatal("Translate() error = nil, want invalid use_ssl error")
 	}
 }
+
+func TestConfigTranslatorRejectsEndpointOutsideHostPortFormat(t *testing.T) {
+	tests := []string{
+		"https://minio.example.test:9000",
+		"minio.example.test:9000/storage",
+	}
+	for _, endpoint := range tests {
+		t.Run(endpoint, func(t *testing.T) {
+			_, err := (configTranslator{}).Translate(map[string]string{
+				EndpointKey: endpoint,
+			})
+			if err == nil {
+				t.Fatalf("Translate() error = nil for endpoint %q, want host[:port] validation error", endpoint)
+			}
+		})
+	}
+}
