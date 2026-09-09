@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -15,9 +16,10 @@ import (
 )
 
 const (
-	Name                = "azure"
-	ConnectionStringKey = "connection_string"
-	ContainerKey        = "container"
+	Name                          = "azure"
+	ConnectionStringKey           = "connection_string"
+	ContainerKey                  = "container"
+	CreateContainerIfNotExistsKey = "create_container_if_not_exists"
 )
 
 type Backend struct{ clients sync.Map }
@@ -25,7 +27,11 @@ type Backend struct{ clients sync.Map }
 func New() store.Backend      { return &Backend{} }
 func (*Backend) Name() string { return Name }
 func (*Backend) ConfigOptions() []store.ConfigOption {
-	return []store.ConfigOption{{Name: ConnectionStringKey, Type: "string", Required: true, Sensitive: true, Description: "Azure Storage connection string."}, {Name: ContainerKey, Type: "string", Required: true, Description: "Azure Blob container name."}}
+	return []store.ConfigOption{
+		{Name: ConnectionStringKey, Type: "string", Required: true, Sensitive: true, Description: "Azure Storage connection string."},
+		{Name: ContainerKey, Type: "string", Required: true, Description: "Azure Blob container name."},
+		{Name: CreateContainerIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the blob container before saving when it does not exist."},
+	}
 }
 func (*Backend) ValidateConfig(ctx context.Context, values map[string]string) error {
 	if err := ctx.Err(); err != nil {
@@ -37,6 +43,11 @@ func (*Backend) ValidateConfig(ctx context.Context, values map[string]string) er
 	if values[ContainerKey] == "" {
 		return errors.New("container is required")
 	}
+	if value := values[CreateContainerIfNotExistsKey]; value != "" {
+		if _, err := strconv.ParseBool(value); err != nil {
+			return errors.New("create_container_if_not_exists must be a boolean")
+		}
+	}
 	return nil
 }
 func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error) {
@@ -45,6 +56,9 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	}
 	c, container, err := b.client(ctx, r.Config.Values)
 	if err != nil {
+		return "", err
+	}
+	if err := ensureContainer(ctx, c, container, r.Config.Values[CreateContainerIfNotExistsKey]); err != nil {
 		return "", err
 	}
 	options := &azblob.UploadBufferOptions{}
@@ -65,6 +79,25 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 		return "", err
 	}
 	return r.FileID, nil
+}
+
+func ensureContainer(ctx context.Context, client *azblob.Client, container, rawCreate string) error {
+	create, _ := strconv.ParseBool(rawCreate)
+	if !create {
+		return nil
+	}
+	containerClient := client.ServiceClient().NewContainerClient(container)
+	if _, err := containerClient.GetProperties(ctx, nil); err == nil {
+		return nil
+	} else if !isNotFound(err) {
+		return err
+	}
+	_, err := client.CreateContainer(ctx, container, nil)
+	var responseError *azcore.ResponseError
+	if errors.As(err, &responseError) && responseError.ErrorCode == "ContainerAlreadyExists" {
+		return nil
+	}
+	return err
 }
 func (b *Backend) Delete(ctx context.Context, r store.FileRequest) (bool, error) {
 	c, container, err := b.client(ctx, r.Config.Values)

@@ -29,14 +29,15 @@ func TestProviderConfigsRoundTripThroughContainerConfig(t *testing.T) {
 		generic := store.NewContainerConfig(
 			s3.NewConfig().
 				WithBucket("images").
-				WithRegion("us-east-1").
-				WithEndpoint("https://s3.example").
+				WithBaseEndpoint("https://s3.example").
 				WithCredentials("access", "secret").
-				WithSessionToken("session").
-				WithPathStyle(true),
+				WithForcePathStyle(true).
+				WithUseChunkEncoding(true).
+				WithProtocol("https").
+				WithCreateBucketIfNotExists(true),
 		)
 		config, err := s3.ParseConfig(generic)
-		if err != nil || config.Bucket != "images" || !config.PathStyle || config.SessionToken != "session" {
+		if err != nil || config.Bucket != "images" || !config.ForcePathStyle || !config.UseChunkEncoding || config.Protocol != "https" || !config.CreateBucketIfNotExists {
 			t.Fatalf("ParseConfig() = (%#v, %v)", config, err)
 		}
 	})
@@ -46,13 +47,12 @@ func TestProviderConfigsRoundTripThroughContainerConfig(t *testing.T) {
 			aws.NewConfig().
 				WithBucket("archive").
 				WithRegion("cn-north-1").
-				WithEndpoint("https://aws.example").
 				WithCredentials("access", "secret").
 				WithSessionToken("session").
-				WithPathStyle(true),
+				WithCreateContainerIfNotExists(true),
 		)
 		config, err := aws.ParseConfig(generic)
-		if err != nil || config.Bucket != "archive" || !config.PathStyle || config.Region != "cn-north-1" {
+		if err != nil || config.Bucket != "archive" || !config.CreateContainerIfNotExists || config.Region != "cn-north-1" {
 			t.Fatalf("ParseConfig() = (%#v, %v)", config, err)
 		}
 	})
@@ -63,11 +63,12 @@ func TestProviderConfigsRoundTripThroughContainerConfig(t *testing.T) {
 				WithBucket("dicom").
 				WithEndpoint("minio:9000").
 				WithCredentials("access", "secret").
-				WithRegion("us-east-1").
-				WithSSL(true),
+				WithRegion("cn-east-1").
+				WithSSL(true).
+				WithCreateBucketIfNotExists(true),
 		)
 		config, err := minio.ParseConfig(generic)
-		if err != nil || config.Endpoint != "minio:9000" || !config.UseSSL || config.AccessKey != "access" {
+		if err != nil || config.Endpoint != "minio:9000" || config.Region != "cn-east-1" || !config.SSL || config.AccessKey != "access" || !config.CreateBucketIfNotExists {
 			t.Fatalf("ParseConfig() = (%#v, %v)", config, err)
 		}
 	})
@@ -79,20 +80,23 @@ func TestProviderConfigsRoundTripThroughContainerConfig(t *testing.T) {
 				WithEndpoint("ks3.example").
 				WithCredentials("access", "secret").
 				WithProtocol("https").
-				WithRegion("BEIJING"),
+				WithUserAgent("sharp-store").
+				WithMaxConnections(30).
+				WithTimeout(100000).
+				WithCreateContainerIfNotExists(true),
 		)
 		config, err := ks3.ParseConfig(generic)
-		if err != nil || config.Protocol != "https" || config.Region != "BEIJING" {
+		if err != nil || config.Protocol != "https" || config.UserAgent != "sharp-store" || config.MaxConnections != 30 || config.Timeout != 100000 || !config.CreateContainerIfNotExists {
 			t.Fatalf("ParseConfig() = (%#v, %v)", config, err)
 		}
 	})
 
 	t.Run("azure", func(t *testing.T) {
 		generic := store.NewContainerConfig(
-			azure.NewConfig().WithConnectionString("connection").WithContainer("images"),
+			azure.NewConfig().WithConnectionString("connection").WithContainer("images").WithCreateContainerIfNotExists(true),
 		)
 		config, err := azure.ParseConfig(generic)
-		if err != nil || config.ConnectionString != "connection" || config.Container != "images" {
+		if err != nil || config.ConnectionString != "connection" || config.Container != "images" || !config.CreateContainerIfNotExists {
 			t.Fatalf("ParseConfig() = (%#v, %v)", config, err)
 		}
 	})
@@ -100,12 +104,13 @@ func TestProviderConfigsRoundTripThroughContainerConfig(t *testing.T) {
 	t.Run("aliyun", func(t *testing.T) {
 		generic := store.NewContainerConfig(
 			aliyun.NewConfig().
-				WithEndpoint("oss.example").
+				WithEndpoint("https://oss.example").
 				WithBucket("images").
-				WithCredentials("access", "secret"),
+				WithCredentials("access", "secret").
+				WithCreateContainerIfNotExists(true),
 		)
 		config, err := aliyun.ParseConfig(generic)
-		if err != nil || config.AccessKeyID != "access" || config.Bucket != "images" {
+		if err != nil || config.AccessKeyID != "access" || config.Bucket != "images" || config.Endpoint != "https://oss.example" || !config.CreateContainerIfNotExists {
 			t.Fatalf("ParseConfig() = (%#v, %v)", config, err)
 		}
 	})
@@ -113,12 +118,13 @@ func TestProviderConfigsRoundTripThroughContainerConfig(t *testing.T) {
 	t.Run("obs", func(t *testing.T) {
 		generic := store.NewContainerConfig(
 			obs.NewConfig().
-				WithEndpoint("obs.example").
+				WithEndpoint("https://obs.example").
 				WithBucket("images").
-				WithCredentials("access", "secret"),
+				WithCredentials("access", "secret").
+				WithCreateContainerIfNotExists(true),
 		)
 		config, err := obs.ParseConfig(generic)
-		if err != nil || config.AccessKeySecret != "secret" || config.Endpoint != "obs.example" {
+		if err != nil || config.AccessKeySecret != "secret" || config.Endpoint != "https://obs.example" || !config.CreateContainerIfNotExists {
 			t.Fatalf("ParseConfig() = (%#v, %v)", config, err)
 		}
 	})
@@ -137,24 +143,17 @@ func TestProviderParseConfigUsesFalseForMissingOptionalBooleans(t *testing.T) {
 		parse func() (bool, error)
 	}{
 		{
-			name: "s3 path style",
+			name: "s3 force path style",
 			parse: func() (bool, error) {
 				config, err := s3.ParseConfig(store.ContainerConfig{Backend: s3.Name})
-				return config.PathStyle, err
-			},
-		},
-		{
-			name: "aws path style",
-			parse: func() (bool, error) {
-				config, err := aws.ParseConfig(store.ContainerConfig{Backend: aws.Name})
-				return config.PathStyle, err
+				return config.ForcePathStyle, err
 			},
 		},
 		{
 			name: "minio ssl",
 			parse: func() (bool, error) {
 				config, err := minio.ParseConfig(store.ContainerConfig{Backend: minio.Name})
-				return config.UseSSL, err
+				return config.SSL, err
 			},
 		},
 	}

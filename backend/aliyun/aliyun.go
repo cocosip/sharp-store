@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,11 +15,12 @@ import (
 )
 
 const (
-	Name               = "aliyun"
-	EndpointKey        = "endpoint"
-	BucketKey          = "bucket"
-	AccessKeyIDKey     = "access_key_id"
-	AccessKeySecretKey = "access_key_secret"
+	Name                          = "aliyun"
+	EndpointKey                   = "endpoint"
+	BucketKey                     = "bucket"
+	AccessKeyIDKey                = "access_key_id"
+	AccessKeySecretKey            = "access_key_secret"
+	CreateContainerIfNotExistsKey = "create_container_if_not_exists"
 )
 
 type Backend struct{ clients sync.Map }
@@ -26,7 +28,13 @@ type Backend struct{ clients sync.Map }
 func New() store.Backend      { return &Backend{} }
 func (*Backend) Name() string { return Name }
 func (*Backend) ConfigOptions() []store.ConfigOption {
-	return []store.ConfigOption{{Name: EndpointKey, Type: "string", Required: true}, {Name: BucketKey, Type: "string", Required: true}, {Name: AccessKeyIDKey, Type: "string", Required: true, Sensitive: true}, {Name: AccessKeySecretKey, Type: "string", Required: true, Sensitive: true}}
+	return []store.ConfigOption{
+		{Name: EndpointKey, Type: "string", Required: true, Example: "https://oss-cn-hangzhou.aliyuncs.com", Description: "Alibaba OSS endpoint passed to the SDK."},
+		{Name: BucketKey, Type: "string", Required: true},
+		{Name: AccessKeyIDKey, Type: "string", Required: true, Sensitive: true},
+		{Name: AccessKeySecretKey, Type: "string", Required: true, Sensitive: true},
+		{Name: CreateContainerIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the OSS bucket before saving when it does not exist."},
+	}
 }
 func (*Backend) ValidateConfig(ctx context.Context, v map[string]string) error {
 	if err := ctx.Err(); err != nil {
@@ -35,6 +43,11 @@ func (*Backend) ValidateConfig(ctx context.Context, v map[string]string) error {
 	for _, k := range []string{EndpointKey, BucketKey, AccessKeyIDKey, AccessKeySecretKey} {
 		if v[k] == "" {
 			return errors.New(k + " is required")
+		}
+	}
+	if value := v[CreateContainerIfNotExistsKey]; value != "" {
+		if _, err := strconv.ParseBool(value); err != nil {
+			return errors.New("create_container_if_not_exists must be a boolean")
 		}
 	}
 	return nil
@@ -49,6 +62,18 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	bucket, err := b.bucket(ctx, r.Config.Values)
 	if err != nil {
 		return "", err
+	}
+	create, _ := strconv.ParseBool(r.Config.Values[CreateContainerIfNotExistsKey])
+	if create {
+		exists, err := bucket.Client.IsBucketExist(bucket.BucketName)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			if err := bucket.Client.CreateBucket(bucket.BucketName); err != nil && !isBucketExists(err) {
+				return "", err
+			}
+		}
 	}
 	err = bucket.PutObject(r.Key, r.Body, oss.ForbidOverWrite(!r.Overwrite), oss.WithContext(ctx))
 	var serviceError oss.ServiceError
@@ -159,4 +184,9 @@ func (b *Backend) bucket(ctx context.Context, v map[string]string) (*oss.Bucket,
 func isNotFound(err error) bool {
 	var e oss.ServiceError
 	return errors.As(err, &e) && (e.Code == "NoSuchKey" || e.Code == "NoSuchObject" || e.StatusCode == 404)
+}
+
+func isBucketExists(err error) bool {
+	var serviceError oss.ServiceError
+	return errors.As(err, &serviceError) && (serviceError.Code == "BucketAlreadyExists" || serviceError.Code == "BucketAlreadyOwnedByYou")
 }

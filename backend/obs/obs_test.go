@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -23,6 +24,60 @@ func TestBackendValidatesConfig(t *testing.T) {
 	}
 	if err := backends.ValidateConfig(context.Background(), Name, map[string]string{EndpointKey: "https://obs.example.test", BucketKey: "archive", AccessKeyIDKey: "access", AccessKeySecretKey: "secret"}); err != nil {
 		t.Fatalf("ValidateConfig() error = %v", err)
+	}
+	if err := backends.ValidateConfig(context.Background(), Name, map[string]string{
+		EndpointKey: "https://obs.example.test", BucketKey: "archive",
+		AccessKeyIDKey: "access", AccessKeySecretKey: "secret",
+		CreateContainerIfNotExistsKey: "sometimes",
+	}); err == nil {
+		t.Fatal("ValidateConfig() error = nil for invalid create_container_if_not_exists")
+	}
+}
+
+func TestBackendConfigOptionsMatchOBSSDK(t *testing.T) {
+	want := []string{EndpointKey, BucketKey, AccessKeyIDKey, AccessKeySecretKey, CreateContainerIfNotExistsKey}
+	options := New().(store.BackendDescriptor).ConfigOptions()
+	got := make([]string, len(options))
+	for i := range options {
+		got[i] = options[i].Name
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ConfigOptions() = %#v, want %#v", got, want)
+	}
+}
+
+func TestBackendSaveCreatesMissingBucketWhenConfigured(t *testing.T) {
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		if r.Method == http.MethodHead && r.URL.Path == "/archive" {
+			w.Header().Set("Content-Type", "application/xml")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, "<Error><Code>NoSuchBucket</Code><Message>missing</Message></Error>")
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	_, err := New().Save(context.Background(), store.SaveRequest{
+		FileRequest: store.FileRequest{
+			Config: store.ContainerConfig{Values: map[string]string{
+				EndpointKey: server.URL, BucketKey: "archive",
+				AccessKeyIDKey: "access", AccessKeySecretKey: "secret",
+				CreateContainerIfNotExistsKey: "true",
+			}},
+			FileID: "file", Key: "tenant/file.txt",
+		},
+		Body: bytes.NewBufferString("content"),
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	want := []string{"HEAD /archive", "PUT /archive", "PUT /archive/tenant/file.txt"}
+	if !slices.Equal(requests, want) {
+		t.Fatalf("requests = %#v, want %#v", requests, want)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 
@@ -27,6 +28,65 @@ func TestBackendValidatesAzureBlobConfiguration(t *testing.T) {
 		ContainerKey:        "archive",
 	}); err != nil {
 		t.Fatalf("ValidateConfig() error = %v", err)
+	}
+	if err := backends.ValidateConfig(context.Background(), Name, map[string]string{
+		ConnectionStringKey:           "DefaultEndpointsProtocol=https;AccountName=account;AccountKey=key",
+		ContainerKey:                  "archive",
+		CreateContainerIfNotExistsKey: "sometimes",
+	}); err == nil {
+		t.Fatal("ValidateConfig() error = nil for invalid create_container_if_not_exists")
+	}
+}
+
+func TestBackendConfigOptionsMatchAzureSDK(t *testing.T) {
+	want := []string{ConnectionStringKey, ContainerKey, CreateContainerIfNotExistsKey}
+	options := New().(store.BackendDescriptor).ConfigOptions()
+	got := make([]string, len(options))
+	for i := range options {
+		got[i] = options[i].Name
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ConfigOptions() = %#v, want %#v", got, want)
+	}
+}
+
+func TestBackendSaveCreatesMissingContainerWhenConfigured(t *testing.T) {
+	var headContainer, createContainer, putObject bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/devstoreaccount1/archive" && r.URL.Query().Get("restype") == "container":
+			headContainer = true
+			w.Header().Set("x-ms-error-code", "ContainerNotFound")
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodPut && r.URL.Path == "/devstoreaccount1/archive" && r.URL.Query().Get("restype") == "container":
+			createContainer = true
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodPut && r.URL.Path == "/devstoreaccount1/archive/tenant/file.txt":
+			putObject = true
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("ETag", "\"local-etag\"")
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	_, err := New().Save(context.Background(), store.SaveRequest{
+		FileRequest: store.FileRequest{
+			Config: store.ContainerConfig{Values: map[string]string{
+				ConnectionStringKey: "AccountName=devstoreaccount1;AccountKey=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=;BlobEndpoint=" + server.URL + "/devstoreaccount1;",
+				ContainerKey:        "archive", CreateContainerIfNotExistsKey: "true",
+			}},
+			FileID: "file", Key: "tenant/file.txt",
+		},
+		Body: bytes.NewBufferString("content"),
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if !headContainer || !createContainer || !putObject {
+		t.Fatalf("requests = (head %t, create %t, put %t), want all true", headContainer, createContainer, putObject)
 	}
 }
 

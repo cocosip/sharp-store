@@ -29,7 +29,7 @@ access URL unless noted below. `AccessURL` checks existence only when
 | Backend name | Use it when | Credentials | `AccessURL` behavior |
 | --- | --- | --- | --- |
 | `filesystem` | Files are on a local disk or mounted volume. | Filesystem permissions | Requires `base_url`; returns a normal URL. |
-| `s3` | The target implements the S3 API, including private endpoints. | Static keys or the AWS SDK default credential chain | Generates a signed S3 GET URL. |
+| `s3` | The target implements the S3 API, including private endpoints. | Static access and secret keys | Generates a signed S3 GET URL. |
 | `aws` | The target is AWS S3 and the deployment should identify it explicitly. | Static keys or the AWS SDK default credential chain | Generates a signed S3 GET URL. |
 | `minio` | The target is MinIO. | Access key and secret key | Generates a signed S3-compatible GET URL. |
 | `ks3` | The target is Kingsoft Cloud KS3. | Access key and secret key | Generates a signed S3-compatible GET URL. |
@@ -138,62 +138,78 @@ public URL, not a signed URL.
 
 ```go
 s3.Config{
-    Bucket: "archive", Region: "us-east-1", Endpoint: "https://s3.example.test",
-    AccessKeyID: "access", SecretAccessKey: "secret", SessionToken: "",
-    PathStyle: true,
+    Bucket: "archive",
+    BaseEndpoint: "https://s3.example.test",
+    AccessKeyID: "access",
+    SecretAccessKey: "secret",
+    ForcePathStyle: true,
+    UseChunkEncoding: false,
+    CreateBucketIfNotExists: true,
 }
 ```
 
-`Bucket` is required; region defaults to `us-east-1`. Omit static credentials
-to use the AWS SDK default credential chain. `Endpoint` is optional. For a
-custom HTTP endpoint the backend uses unsigned payload signing so streaming
-`io.Reader` bodies work; normal AWS HTTPS signing remains unchanged.
+Use `s3` for a service that implements the generic S3 protocol and has no
+dedicated backend. `bucket`, `base_endpoint`, `access_key_id`, and
+`secret_access_key` are required. `base_endpoint` maps to the AWS Go SDK
+`s3.Options.BaseEndpoint` field and must be a complete HTTP(S) URL. This
+provider deliberately has no `region`, `authentication_region`, or
+`session_token` setting; it signs compatible requests with `us-east-1` and
+static credentials.
 
-Use `s3` for an S3-compatible service without its own backend, such as an S3
-gateway or a private object-store endpoint. When supplied, `endpoint` must be
-an absolute URL. Configure `access_key_id` and `secret_access_key` together, or
-omit both for the AWS SDK default credential chain. `session_token` is optional
-for temporary static credentials. Set `path_style` when the endpoint requires
-URLs of the form `https://host/bucket/key` rather than virtual-hosted bucket
-URLs.
+Set `force_path_style` when the service expects
+`https://host/bucket/key`. `use_chunk_encoding` allows an unknown-length
+`io.Reader` to stream with chunked transfer encoding. When it is false, the
+backend determines the length directly or buffers a non-seekable reader in a
+temporary file before calling the SDK. `protocol` is optional and only
+overrides the scheme of generated access URLs; it defaults to the scheme in
+`base_endpoint`. `create_bucket_if_not_exists` checks and creates the bucket
+before saving.
 
 ## AWS S3
 
 ```go
-aws.Config{Bucket: "archive", Region: "ap-southeast-1"}
+aws.Config{
+    Bucket: "archive",
+    Region: "ap-southeast-1",
+    CreateContainerIfNotExists: true,
+}
 ```
 
-`aws.Config` has the same fields as `s3.Config`: `Bucket`, `Region`,
-`Endpoint`, `AccessKeyID`, `SecretAccessKey`, `SessionToken`, and `PathStyle`.
-Use `Endpoint` for LocalStack or a private partition; use the SDK default
-credential chain when access keys are omitted.
-
-Use `aws` for AWS S3 when the deployment should state that intent explicitly.
-For IAM roles, workload identity, shared AWS configuration, or environment
-credentials, omit `AccessKeyID`, `SecretAccessKey`, and `SessionToken`.
-`PathStyle` is disabled unless explicitly set to `true`.
+Use `aws` only for Amazon S3. `bucket` is required and `region` defaults to
+`us-east-1`. The backend uses the official AWS SDK endpoint resolver and
+default credential chain, so it does not expose a custom endpoint or path-style
+switch. For IAM roles, workload identity, shared AWS configuration, or
+environment credentials, omit `access_key_id`, `secret_access_key`, and
+`session_token`. Static access and secret keys must be supplied together; a
+session token is accepted only with those keys. `create_container_if_not_exists`
+creates the S3 bucket before saving when necessary.
 
 ## MinIO
 
 ```go
 minio.Config{
     Bucket: "archive", Endpoint: "minio.example:9000",
-    AccessKey: "access", SecretKey: "secret", UseSSL: true, Region: "us-east-1",
+    AccessKey: "access", SecretKey: "secret", Region: "cn-east-1", SSL: true,
+    CreateBucketIfNotExists: true,
 }
 ```
 
 `Bucket`, `Endpoint`, `AccessKey`, and `SecretKey` are required. `Endpoint` is
 a domain name or IP address with an optional port and must not include
-`http://`, `https://`, a path, or query parameters. `UseSSL: true` uses HTTPS;
-`false` uses HTTP. Path-style addressing is always used. `Region` defaults to
-`us-east-1`.
+`http://`, `https://`, a path, or query parameters. `SSL: true` (`with_ssl` in
+generic values) uses HTTPS; false uses HTTP. `Region` maps to the MinIO Go SDK
+signing region and defaults to `us-east-1`. The backend uses path-style bucket
+lookup. `create_bucket_if_not_exists` controls the pre-save bucket check and
+creation.
 
 ## KS3
 
 ```go
 ks3.Config{
     Bucket: "archive", Endpoint: "ks3-cn-beijing.ksyuncs.com",
-    AccessKey: "access", SecretKey: "secret", Protocol: "https", Region: "us-east-1",
+    AccessKey: "access", SecretKey: "secret", Protocol: "https",
+    UserAgent: "sharp-store", MaxConnections: 30, Timeout: 100000,
+    CreateContainerIfNotExists: true,
 }
 ```
 
@@ -202,8 +218,13 @@ a domain name or IP address with an optional port and must not include
 `http://`, `https://`, a path, or query parameters. `Protocol` must be `http`
 or `https` and defaults to `http`.
 
-Use `ks3` for Kingsoft Cloud KS3. Path-style addressing is always used.
-`Region` defaults to `us-east-1`.
+This backend uses the KS3 SDK with its V2 signer and KS3 overwrite-prevention
+header; it does not route through the AWS S3 backend. `user_agent` is optional.
+`max_connections` limits connections per endpoint, and `timeout` is the whole
+request timeout in milliseconds; zero leaves the Go HTTP defaults in effect.
+The SDK requires a region value internally, but it is fixed by the backend and
+is not a user setting. `read_write_timeout` is not exposed because the Go SDK
+does not provide an equivalent with the same semantics.
 
 ## Azure Blob
 
@@ -211,17 +232,20 @@ Use `ks3` for Kingsoft Cloud KS3. Path-style addressing is always used.
 azure.Config{
     ConnectionString: "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net",
     Container: "archive",
+    CreateContainerIfNotExists: true,
 }
 ```
 
-Both fields are required. The current implementation supports object operations
-through the Azure Blob SDK. It does not generate access URLs, so `AccessURL`
-returns `store.ErrUnsupported`.
+`ConnectionString` and `Container` are required. The current implementation
+supports object operations through the Azure Blob SDK. It does not generate
+access URLs, so `AccessURL` returns `store.ErrUnsupported`.
 
 The backend currently reads the complete `Save` body into memory before
 uploading. Applications storing large objects should account for that memory
 requirement. Generate Azure SAS URLs or expose downloads through the host
-application when clients need direct access.
+application when clients need direct access. Set
+`create_container_if_not_exists` to check and create the blob container before
+saving.
 
 ## Aliyun OSS
 
@@ -229,6 +253,7 @@ application when clients need direct access.
 aliyun.Config{
     Endpoint: "https://oss-cn-hangzhou.aliyuncs.com", Bucket: "archive",
     AccessKeyID: "access", AccessKeySecret: "secret",
+    CreateContainerIfNotExists: true,
 }
 ```
 
@@ -237,7 +262,10 @@ default lifetime is one hour unless `AccessURLOptions.ExpiresAt` is supplied.
 
 Use `aliyun` for Alibaba Cloud OSS. Keep `AccessKeyID` and `AccessKeySecret`
 outside committed configuration files. Use `AccessURLOptions.ExpiresAt` when
-the default one-hour signed URL lifetime is not suitable.
+the default one-hour signed URL lifetime is not suitable. `Endpoint` is named
+after the `endpoint` argument accepted by `oss.New` and may include its HTTP(S)
+scheme. `create_container_if_not_exists` checks and creates the OSS bucket
+before saving.
 
 ## Huawei OBS
 
@@ -245,6 +273,7 @@ the default one-hour signed URL lifetime is not suitable.
 obs.Config{
     Endpoint: "https://obs.cn-north-4.myhuaweicloud.com", Bucket: "archive",
     AccessKeyID: "access", AccessKeySecret: "secret",
+    CreateContainerIfNotExists: true,
 }
 ```
 
@@ -253,7 +282,10 @@ default lifetime is one hour unless `AccessURLOptions.ExpiresAt` is supplied.
 
 Use `obs` for Huawei Cloud OBS. Keep `AccessKeyID` and `AccessKeySecret` out
 of committed configuration files. Use `AccessURLOptions.ExpiresAt` when the
-default one-hour signed URL lifetime is not suitable.
+default one-hour signed URL lifetime is not suitable. `Endpoint` is named after
+the `endpoint` argument accepted by `obs.New` and may include its HTTP(S)
+scheme. `create_container_if_not_exists` checks and creates the OBS bucket
+before saving.
 
 ## Validation and Secret Handling
 

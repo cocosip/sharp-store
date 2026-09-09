@@ -1,21 +1,24 @@
-package s3compat_test
+package backend_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	store "github.com/cocosip/sharp-store"
-	"github.com/cocosip/sharp-store/backend/aws"
 	"github.com/cocosip/sharp-store/backend/ks3"
 	"github.com/cocosip/sharp-store/backend/minio"
 )
@@ -30,18 +33,6 @@ func TestS3CompatibleProvidersHonorObjectContract(t *testing.T) {
 		values  map[string]string
 	}{
 		{
-			name:    "aws",
-			backend: aws.New(),
-			values: map[string]string{
-				aws.BucketKey:          "archive",
-				aws.RegionKey:          "us-east-1",
-				aws.EndpointKey:        server.URL,
-				aws.AccessKeyIDKey:     "access",
-				aws.SecretAccessKeyKey: "secret",
-				aws.PathStyleKey:       "true",
-			},
-		},
-		{
 			name:    "minio",
 			backend: minio.New(),
 			values: map[string]string{
@@ -49,7 +40,7 @@ func TestS3CompatibleProvidersHonorObjectContract(t *testing.T) {
 				minio.EndpointKey:  server.Listener.Addr().String(),
 				minio.AccessKeyKey: "access",
 				minio.SecretKeyKey: "secret",
-				minio.UseSSLKey:    "false",
+				minio.WithSSLKey:   "false",
 			},
 		},
 		{
@@ -114,7 +105,11 @@ func TestS3CompatibleProvidersHonorObjectContract(t *testing.T) {
 				t.Fatalf("AccessURL() error = %v", err)
 			}
 			parsed, err := url.Parse(accessURL)
-			if err != nil || parsed.Query().Get("X-Amz-Signature") == "" {
+			signature := parsed.Query().Get("X-Amz-Signature")
+			if test.name == "ks3" {
+				signature = parsed.Query().Get("Signature")
+			}
+			if err != nil || signature == "" {
 				t.Fatalf("AccessURL() = %q, error = %v, want signed URL", accessURL, err)
 			}
 			destination := filepath.Join(t.TempDir(), "downloaded.txt")
@@ -165,13 +160,19 @@ func newObjectServer(t *testing.T) *httptest.Server {
 		defer mu.Unlock()
 		switch r.Method {
 		case http.MethodPut:
-			if r.Header.Get("If-None-Match") == "*" {
+			if r.Header.Get("If-None-Match") == "*" || r.Header.Get("x-amz-forbid-overwrite") == "true" {
 				if _, exists := objects[r.URL.Path]; exists {
+					code := "PreconditionFailed"
+					if r.Header.Get("x-amz-forbid-overwrite") == "true" {
+						code = "ObjectAlreadyExists"
+					}
+					w.Header().Set("Content-Type", "application/xml")
 					w.WriteHeader(http.StatusPreconditionFailed)
+					_, _ = io.WriteString(w, "<Error><Code>"+code+"</Code><Message>object exists</Message></Error>")
 					return
 				}
 			}
-			body, err := io.ReadAll(r.Body)
+			body, err := readRequestBody(r)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
@@ -184,11 +185,19 @@ func newObjectServer(t *testing.T) *httptest.Server {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
+			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+			w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+			w.Header().Set("ETag", `"test-etag"`)
 			_, _ = w.Write(body)
 		case http.MethodHead:
-			if _, ok := objects[r.URL.Path]; !ok {
+			body, ok := objects[r.URL.Path]
+			if !ok {
 				w.WriteHeader(http.StatusNotFound)
+				return
 			}
+			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+			w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+			w.Header().Set("ETag", `"test-etag"`)
 		case http.MethodDelete:
 			delete(objects, r.URL.Path)
 			w.WriteHeader(http.StatusNoContent)
@@ -198,4 +207,33 @@ func newObjectServer(t *testing.T) *httptest.Server {
 	}))
 	t.Cleanup(server.Close)
 	return server
+}
+
+func readRequestBody(request *http.Request) ([]byte, error) {
+	if !strings.Contains(request.Header.Get("Content-Encoding"), "aws-chunked") {
+		return io.ReadAll(request.Body)
+	}
+
+	reader := bufio.NewReader(request.Body)
+	var decoded bytes.Buffer
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		sizeText := strings.SplitN(strings.TrimSpace(line), ";", 2)[0]
+		size, err := strconv.ParseInt(sizeText, 16, 64)
+		if err != nil {
+			return nil, err
+		}
+		if size == 0 {
+			return decoded.Bytes(), nil
+		}
+		if _, err := io.CopyN(&decoded, reader, size); err != nil {
+			return nil, err
+		}
+		if _, err := reader.Discard(2); err != nil {
+			return nil, err
+		}
+	}
 }
