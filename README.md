@@ -1,6 +1,6 @@
 # sharp-store
 
-`sharp-store` is a Go 1.25 file-storage library. A `Factory` opens a public
+`sharp-store` is a Go 1.26 file-storage library. A `Factory` opens a public
 `Container`; the container builds a tenant-aware object key and delegates file
 operations to the configured backend. Configuration lookup and caching are
 replaceable capabilities. `source/static` provides built-in in-memory

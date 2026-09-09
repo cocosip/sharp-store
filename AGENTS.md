@@ -2,7 +2,7 @@
 
 ## Project Structure
 
-This is a Go 1.25 file-storage library (`github.com/cocosip/sharp-store`). The
+This is a Go 1.26 file-storage library (`github.com/cocosip/sharp-store`). The
 root package owns the public abstractions and orchestration: `Factory`,
 `Container`, configuration, tenant scope, keys, and backend registration.
 Storage integrations are isolated in `backend/<provider>/` (for example,
