@@ -7,10 +7,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 
 	store "github.com/cocosip/sharp-store"
 )
+
+// requestPath strips the trailing slash the AWS SDK appends to bucket-level
+// operations (HeadBucket, CreateBucket) in path-style mode, e.g. HEAD /archive/.
+func requestPath(r *http.Request) string {
+	return strings.TrimSuffix(r.URL.Path, "/")
+}
 
 func TestConfigPreservesAWSConnectionSettings(t *testing.T) {
 	values := NewConfig().
@@ -31,8 +38,9 @@ func TestConfigPreservesAWSConnectionSettings(t *testing.T) {
 func TestBackendSaveCreatesMissingBucketWhenConfigured(t *testing.T) {
 	var requests []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests = append(requests, r.Method+" "+r.URL.Path)
-		if r.Method == http.MethodHead && r.URL.Path == "/archive" {
+		path := requestPath(r)
+		requests = append(requests, r.Method+" "+path)
+		if r.Method == http.MethodHead && path == "/archive" {
 			w.Header().Set("Content-Type", "application/xml")
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = io.WriteString(w, "<Error><Code>NoSuchBucket</Code></Error>")
@@ -69,18 +77,18 @@ func TestBackendSaveContinuesWhenBucketWasCreatedConcurrently(t *testing.T) {
 	headRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodHead && r.URL.Path == "/archive":
+		case r.Method == http.MethodHead && requestPath(r) == "/archive":
 			headRequests++
 			if headRequests == 1 {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-		case r.Method == http.MethodPut && r.URL.Path == "/archive":
+		case r.Method == http.MethodPut && requestPath(r) == "/archive":
 			w.Header().Set("Content-Type", "application/xml")
 			w.WriteHeader(http.StatusConflict)
 			_, _ = io.WriteString(w, "<Error><Code>BucketAlreadyExists</Code></Error>")
-		case r.Method == http.MethodPut && r.URL.Path == "/archive/tenant/file.txt":
+		case r.Method == http.MethodPut && requestPath(r) == "/archive/tenant/file.txt":
 			objectUploaded = true
 			_, _ = io.Copy(io.Discard, r.Body)
 			w.WriteHeader(http.StatusOK)
