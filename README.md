@@ -108,7 +108,7 @@ config := store.NewContainerConfig(
         WithBucket("archive").
         WithEndpoint("minio.example:9000").
         WithCredentials("access", "secret").
-        WithSSL(true),
+        WithSecure(true),
 )
 
 typed, err := minio.ParseConfig(config)

@@ -22,20 +22,20 @@ func TestBackendValidatesConfig(t *testing.T) {
 	if err := backends.ValidateConfig(context.Background(), Name, nil); err == nil {
 		t.Fatal("ValidateConfig() error = nil")
 	}
-	if err := backends.ValidateConfig(context.Background(), Name, map[string]string{EndpointKey: "https://obs.example.test", BucketKey: "archive", AccessKeyIDKey: "access", AccessKeySecretKey: "secret"}); err != nil {
+	if err := backends.ValidateConfig(context.Background(), Name, map[string]string{EndpointKey: "https://obs.example.test", BucketKey: "archive", AccessKeyIDKey: "access", SecretAccessKeyKey: "secret"}); err != nil {
 		t.Fatalf("ValidateConfig() error = %v", err)
 	}
 	if err := backends.ValidateConfig(context.Background(), Name, map[string]string{
 		EndpointKey: "https://obs.example.test", BucketKey: "archive",
-		AccessKeyIDKey: "access", AccessKeySecretKey: "secret",
-		CreateContainerIfNotExistsKey: "sometimes",
+		AccessKeyIDKey: "access", SecretAccessKeyKey: "secret",
+		CreateBucketIfNotExistsKey: "sometimes",
 	}); err == nil {
-		t.Fatal("ValidateConfig() error = nil for invalid create_container_if_not_exists")
+		t.Fatal("ValidateConfig() error = nil for invalid create_bucket_if_not_exists")
 	}
 }
 
 func TestBackendConfigOptionsMatchOBSSDK(t *testing.T) {
-	want := []string{EndpointKey, BucketKey, AccessKeyIDKey, AccessKeySecretKey, CreateContainerIfNotExistsKey}
+	want := []string{EndpointKey, BucketKey, AccessKeyIDKey, SecretAccessKeyKey, CreateBucketIfNotExistsKey}
 	options := New().(store.BackendDescriptor).ConfigOptions()
 	got := make([]string, len(options))
 	for i := range options {
@@ -65,8 +65,8 @@ func TestBackendSaveCreatesMissingBucketWhenConfigured(t *testing.T) {
 		FileRequest: store.FileRequest{
 			Config: store.ContainerConfig{Values: map[string]string{
 				EndpointKey: server.URL, BucketKey: "archive",
-				AccessKeyIDKey: "access", AccessKeySecretKey: "secret",
-				CreateContainerIfNotExistsKey: "true",
+				AccessKeyIDKey: "access", SecretAccessKeyKey: "secret",
+				CreateBucketIfNotExistsKey: "true",
 			}},
 			FileID: "file", Key: "tenant/file.txt",
 		},
@@ -141,7 +141,7 @@ func TestBackendHonorsObjectContractAgainstLocalEndpoint(t *testing.T) {
 				EndpointKey:        server.URL,
 				BucketKey:          "archive",
 				AccessKeyIDKey:     "access",
-				AccessKeySecretKey: "secret",
+				SecretAccessKeyKey: "secret",
 			}},
 			FileID: "instance",
 			Key:    "tenant-a/instance.dcm",

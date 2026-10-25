@@ -38,7 +38,7 @@ func TestBackendValidateConfigRequiresKS3ConnectionSettings(t *testing.T) {
 func TestBackendConfigOptionsMatchKS3SDK(t *testing.T) {
 	want := []string{
 		BucketKey, EndpointKey, AccessKeyKey, SecretKeyKey, ProtocolKey,
-		UserAgentKey, MaxConnectionsKey, TimeoutKey, CreateContainerIfNotExistsKey,
+		UserAgentKey, MaxConnectionsKey, TimeoutKey, CreateBucketIfNotExistsKey,
 	}
 	options := New().(store.BackendDescriptor).ConfigOptions()
 	if len(options) != len(want) {
@@ -60,13 +60,13 @@ func TestConfigValuesUsesKS3SDKSettings(t *testing.T) {
 		WithUserAgent("sharp-store-tests").
 		WithMaxConnections(20).
 		WithTimeout(120000).
-		WithCreateContainerIfNotExists(true).
+		WithCreateBucketIfNotExists(true).
 		Values()
 	want := map[string]string{
 		BucketKey: "archive", EndpointKey: "ks3.example.test",
 		AccessKeyKey: "access", SecretKeyKey: "secret", ProtocolKey: "https",
 		UserAgentKey: "sharp-store-tests", MaxConnectionsKey: "20", TimeoutKey: "120000",
-		CreateContainerIfNotExistsKey: "true",
+		CreateBucketIfNotExistsKey: "true",
 	}
 	if !maps.Equal(values, want) {
 		t.Fatalf("Values() = %#v, want %#v", values, want)
@@ -216,7 +216,7 @@ func TestBackendSaveCreatesMissingContainerWhenConfigured(t *testing.T) {
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", EndpointKey: endpoint,
 				AccessKeyKey: "access", SecretKeyKey: "secret", ProtocolKey: "http",
-				CreateContainerIfNotExistsKey: "true",
+				CreateBucketIfNotExistsKey: "true",
 			}},
 			FileID: "file",
 			Key:    "tenant/file.txt",
@@ -264,7 +264,7 @@ func TestBackendSaveContinuesWhenBucketWasCreatedConcurrently(t *testing.T) {
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", EndpointKey: endpoint,
 				AccessKeyKey: "access", SecretKeyKey: "secret", ProtocolKey: "http",
-				CreateContainerIfNotExistsKey: "true",
+				CreateBucketIfNotExistsKey: "true",
 			}},
 			FileID: "file", Key: "tenant/file.txt",
 		},

@@ -25,7 +25,7 @@ func TestBackend_SavePreservesOtherConflicts(t *testing.T) {
 	}))
 	defer server.Close()
 	_, err := New().Save(context.Background(), store.SaveRequest{
-		FileRequest: store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{EndpointKey: server.URL, BucketKey: "archive", AccessKeyIDKey: "access", AccessKeySecretKey: "secret"}}, Key: "file", FileID: "file"},
+		FileRequest: store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{EndpointKey: server.URL, BucketKey: "archive", AccessKeyIDKey: "access", SecretAccessKeyKey: "secret"}}, Key: "file", FileID: "file"},
 		Body:        strings.NewReader("data"),
 	})
 	if err == nil || errors.Is(err, store.ErrFileExists) {
@@ -86,7 +86,7 @@ func TestBackend_SaveNoOverwriteIsAtomic(t *testing.T) {
 	for _, body := range []string{"first", "second"} {
 		go func() {
 			_, err := backend.Save(ctx, store.SaveRequest{
-				FileRequest: store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{EndpointKey: server.URL, BucketKey: "archive", AccessKeyIDKey: "access", AccessKeySecretKey: "secret"}}, Key: "same", FileID: "same"},
+				FileRequest: store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{EndpointKey: server.URL, BucketKey: "archive", AccessKeyIDKey: "access", SecretAccessKeyKey: "secret"}}, Key: "same", FileID: "same"},
 				Body:        strings.NewReader(body),
 			})
 			errs <- err
@@ -107,7 +107,7 @@ func TestBackend_SaveNoOverwriteIsAtomic(t *testing.T) {
 		t.Fatalf("successes=%d conflicts=%d, want 1 each", successes, conflicts)
 	}
 	request := store.SaveRequest{
-		FileRequest: store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{EndpointKey: server.URL, BucketKey: "archive", AccessKeyIDKey: "access", AccessKeySecretKey: "secret"}}, Key: "same", FileID: "same"},
+		FileRequest: store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{EndpointKey: server.URL, BucketKey: "archive", AccessKeyIDKey: "access", SecretAccessKeyKey: "secret"}}, Key: "same", FileID: "same"},
 		Body:        strings.NewReader("replacement"), Overwrite: true,
 	}
 	if _, err := backend.Save(ctx, request); err != nil {

@@ -8,15 +8,15 @@ import (
 )
 
 type Config struct {
-	Bucket                     string
-	Endpoint                   string
-	AccessKey                  string
-	SecretKey                  string
-	Protocol                   string
-	UserAgent                  string
-	MaxConnections             int
-	Timeout                    int
-	CreateContainerIfNotExists bool
+	Bucket                  string
+	Endpoint                string
+	AccessKey               string
+	SecretKey               string
+	Protocol                string
+	UserAgent               string
+	MaxConnections          int
+	Timeout                 int
+	CreateBucketIfNotExists bool
 }
 
 func NewConfig() Config { return Config{} }
@@ -38,8 +38,8 @@ func (c Config) WithTimeout(timeoutMilliseconds int) Config {
 	c.Timeout = timeoutMilliseconds
 	return c
 }
-func (c Config) WithCreateContainerIfNotExists(create bool) Config {
-	c.CreateContainerIfNotExists = create
+func (c Config) WithCreateBucketIfNotExists(create bool) Config {
+	c.CreateBucketIfNotExists = create
 	return c
 }
 
@@ -49,11 +49,11 @@ func (c Config) Values() map[string]string {
 	return map[string]string{
 		BucketKey: c.Bucket, EndpointKey: c.Endpoint,
 		AccessKeyKey: c.AccessKey, SecretKeyKey: c.SecretKey,
-		ProtocolKey:                   c.Protocol,
-		UserAgentKey:                  c.UserAgent,
-		MaxConnectionsKey:             strconv.Itoa(c.MaxConnections),
-		TimeoutKey:                    strconv.Itoa(c.Timeout),
-		CreateContainerIfNotExistsKey: strconv.FormatBool(c.CreateContainerIfNotExists),
+		ProtocolKey:                c.Protocol,
+		UserAgentKey:               c.UserAgent,
+		MaxConnectionsKey:          strconv.Itoa(c.MaxConnections),
+		TimeoutKey:                 strconv.Itoa(c.Timeout),
+		CreateBucketIfNotExistsKey: strconv.FormatBool(c.CreateBucketIfNotExists),
 	}
 }
 
@@ -61,12 +61,12 @@ func ParseConfig(config store.ContainerConfig) (Config, error) {
 	if config.Backend != Name {
 		return Config{}, fmt.Errorf("%w: expected backend %q, got %q", store.ErrInvalidConfig, Name, config.Backend)
 	}
-	createContainer := false
-	if raw := config.Values[CreateContainerIfNotExistsKey]; raw != "" {
+	createBucket := false
+	if raw := config.Values[CreateBucketIfNotExistsKey]; raw != "" {
 		var err error
-		createContainer, err = strconv.ParseBool(raw)
+		createBucket, err = strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("%w: %s: %v", store.ErrInvalidConfig, CreateContainerIfNotExistsKey, err)
+			return Config{}, fmt.Errorf("%w: %s: %v", store.ErrInvalidConfig, CreateBucketIfNotExistsKey, err)
 		}
 	}
 	maxConnections, err := parseConfigInt(config.Values, MaxConnectionsKey)
@@ -82,7 +82,7 @@ func ParseConfig(config store.ContainerConfig) (Config, error) {
 		AccessKey: config.Values[AccessKeyKey], SecretKey: config.Values[SecretKeyKey],
 		Protocol: config.Values[ProtocolKey], UserAgent: config.Values[UserAgentKey],
 		MaxConnections: maxConnections, Timeout: timeout,
-		CreateContainerIfNotExists: createContainer,
+		CreateBucketIfNotExists: createBucket,
 	}, nil
 }
 

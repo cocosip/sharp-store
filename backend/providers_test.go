@@ -40,7 +40,7 @@ func TestS3CompatibleProvidersHonorObjectContract(t *testing.T) {
 				minio.EndpointKey:  server.Listener.Addr().String(),
 				minio.AccessKeyKey: "access",
 				minio.SecretKeyKey: "secret",
-				minio.WithSSLKey:   "false",
+				minio.SecureKey:    "false",
 			},
 		},
 		{

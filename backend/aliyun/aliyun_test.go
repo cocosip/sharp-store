@@ -28,14 +28,14 @@ func TestBackendValidatesConfig(t *testing.T) {
 	if err := backends.ValidateConfig(context.Background(), Name, map[string]string{
 		EndpointKey: "https://oss.example.test", BucketKey: "archive",
 		AccessKeyIDKey: "access", AccessKeySecretKey: "secret",
-		CreateContainerIfNotExistsKey: "sometimes",
+		CreateBucketIfNotExistsKey: "sometimes",
 	}); err == nil {
-		t.Fatal("ValidateConfig() error = nil for invalid create_container_if_not_exists")
+		t.Fatal("ValidateConfig() error = nil for invalid create_bucket_if_not_exists")
 	}
 }
 
 func TestBackendConfigOptionsMatchAliyunSDK(t *testing.T) {
-	want := []string{EndpointKey, BucketKey, AccessKeyIDKey, AccessKeySecretKey, CreateContainerIfNotExistsKey}
+	want := []string{EndpointKey, BucketKey, AccessKeyIDKey, AccessKeySecretKey, CreateBucketIfNotExistsKey}
 	options := New().(store.BackendDescriptor).ConfigOptions()
 	got := make([]string, len(options))
 	for i := range options {
@@ -68,7 +68,7 @@ func TestBackendSaveCreatesMissingBucketWhenConfigured(t *testing.T) {
 			Config: store.ContainerConfig{Values: map[string]string{
 				EndpointKey: server.URL, BucketKey: "archive",
 				AccessKeyIDKey: "access", AccessKeySecretKey: "secret",
-				CreateContainerIfNotExistsKey: "true",
+				CreateBucketIfNotExistsKey: "true",
 			}},
 			FileID: "file", Key: "tenant/file.txt",
 		},

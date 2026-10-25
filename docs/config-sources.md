@@ -35,7 +35,7 @@ configs := static.New(map[store.ContainerKey]store.ContainerConfig{
             WithBucket("archive").
             WithEndpoint("127.0.0.1:9000").
             WithCredentials("access", "secret").
-            WithSSL(false),
+            WithSecure(false),
     ),
 })
 
@@ -316,7 +316,7 @@ generic := store.NewContainerConfig(
         WithBucket("images").
         WithEndpoint("minio.example:9000").
         WithCredentials("access", "secret").
-        WithSSL(true),
+        WithSecure(true),
 ).WithTenantMode(store.TenantScoped)
 
 typed, err := minio.ParseConfig(generic)

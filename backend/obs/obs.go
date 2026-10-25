@@ -3,6 +3,7 @@ package obs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,12 +17,12 @@ import (
 )
 
 const (
-	Name                          = "obs"
-	EndpointKey                   = "endpoint"
-	BucketKey                     = "bucket"
-	AccessKeyIDKey                = "access_key_id"
-	AccessKeySecretKey            = "access_key_secret"
-	CreateContainerIfNotExistsKey = "create_container_if_not_exists"
+	Name                       = "obs"
+	EndpointKey                = "endpoint"
+	BucketKey                  = "bucket"
+	AccessKeyIDKey             = "access_key_id"
+	SecretAccessKeyKey         = "secret_access_key"
+	CreateBucketIfNotExistsKey = "create_bucket_if_not_exists"
 )
 
 type Backend struct{ clients sync.Map }
@@ -33,22 +34,22 @@ func (*Backend) ConfigOptions() []store.ConfigOption {
 		{Name: EndpointKey, Type: "string", Required: true, Example: "https://obs.cn-north-4.myhuaweicloud.com", Description: "Huawei OBS endpoint passed to the SDK."},
 		{Name: BucketKey, Type: "string", Required: true},
 		{Name: AccessKeyIDKey, Type: "string", Required: true, Sensitive: true},
-		{Name: AccessKeySecretKey, Type: "string", Required: true, Sensitive: true},
-		{Name: CreateContainerIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the OBS bucket before saving when it does not exist."},
+		{Name: SecretAccessKeyKey, Type: "string", Required: true, Sensitive: true},
+		{Name: CreateBucketIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the OBS bucket before saving when it does not exist."},
 	}
 }
 func (*Backend) ValidateConfig(ctx context.Context, v map[string]string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	for _, k := range []string{EndpointKey, BucketKey, AccessKeyIDKey, AccessKeySecretKey} {
+	for _, k := range []string{EndpointKey, BucketKey, AccessKeyIDKey, SecretAccessKeyKey} {
 		if v[k] == "" {
 			return errors.New(k + " is required")
 		}
 	}
-	if value := v[CreateContainerIfNotExistsKey]; value != "" {
+	if value := v[CreateBucketIfNotExistsKey]; value != "" {
 		if _, err := strconv.ParseBool(value); err != nil {
-			return errors.New("create_container_if_not_exists must be a boolean")
+			return fmt.Errorf("%s must be a boolean", CreateBucketIfNotExistsKey)
 		}
 	}
 	return nil
@@ -65,7 +66,7 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	if err != nil {
 		return "", err
 	}
-	create, _ := strconv.ParseBool(r.Config.Values[CreateContainerIfNotExistsKey])
+	create, _ := strconv.ParseBool(r.Config.Values[CreateBucketIfNotExistsKey])
 	if create {
 		if _, err := client.HeadBucket(bucket); err != nil {
 			if !isBucketNotFound(err) {
@@ -177,11 +178,11 @@ func (b *Backend) client(ctx context.Context, v map[string]string) (*obsdk.ObsCl
 	if err := b.ValidateConfig(ctx, v); err != nil {
 		return nil, "", err
 	}
-	key := v[EndpointKey] + "\x00" + v[AccessKeyIDKey] + "\x00" + v[AccessKeySecretKey]
+	key := v[EndpointKey] + "\x00" + v[AccessKeyIDKey] + "\x00" + v[SecretAccessKeyKey]
 	if x, ok := b.clients.Load(key); ok {
 		return x.(*obsdk.ObsClient), v[BucketKey], nil
 	}
-	c, err := obsdk.New(v[AccessKeyIDKey], v[AccessKeySecretKey], v[EndpointKey])
+	c, err := obsdk.New(v[AccessKeyIDKey], v[SecretAccessKeyKey], v[EndpointKey])
 	if err != nil {
 		return nil, "", err
 	}

@@ -3,6 +3,7 @@ package aliyun
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,12 +16,12 @@ import (
 )
 
 const (
-	Name                          = "aliyun"
-	EndpointKey                   = "endpoint"
-	BucketKey                     = "bucket"
-	AccessKeyIDKey                = "access_key_id"
-	AccessKeySecretKey            = "access_key_secret"
-	CreateContainerIfNotExistsKey = "create_container_if_not_exists"
+	Name                       = "aliyun"
+	EndpointKey                = "endpoint"
+	BucketKey                  = "bucket"
+	AccessKeyIDKey             = "access_key_id"
+	AccessKeySecretKey         = "access_key_secret"
+	CreateBucketIfNotExistsKey = "create_bucket_if_not_exists"
 )
 
 type Backend struct{ clients sync.Map }
@@ -33,7 +34,7 @@ func (*Backend) ConfigOptions() []store.ConfigOption {
 		{Name: BucketKey, Type: "string", Required: true},
 		{Name: AccessKeyIDKey, Type: "string", Required: true, Sensitive: true},
 		{Name: AccessKeySecretKey, Type: "string", Required: true, Sensitive: true},
-		{Name: CreateContainerIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the OSS bucket before saving when it does not exist."},
+		{Name: CreateBucketIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the OSS bucket before saving when it does not exist."},
 	}
 }
 func (*Backend) ValidateConfig(ctx context.Context, v map[string]string) error {
@@ -45,9 +46,9 @@ func (*Backend) ValidateConfig(ctx context.Context, v map[string]string) error {
 			return errors.New(k + " is required")
 		}
 	}
-	if value := v[CreateContainerIfNotExistsKey]; value != "" {
+	if value := v[CreateBucketIfNotExistsKey]; value != "" {
 		if _, err := strconv.ParseBool(value); err != nil {
-			return errors.New("create_container_if_not_exists must be a boolean")
+			return fmt.Errorf("%s must be a boolean", CreateBucketIfNotExistsKey)
 		}
 	}
 	return nil
@@ -63,7 +64,7 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	if err != nil {
 		return "", err
 	}
-	create, _ := strconv.ParseBool(r.Config.Values[CreateContainerIfNotExistsKey])
+	create, _ := strconv.ParseBool(r.Config.Values[CreateBucketIfNotExistsKey])
 	if create {
 		exists, err := bucket.Client.IsBucketExist(bucket.BucketName)
 		if err != nil {

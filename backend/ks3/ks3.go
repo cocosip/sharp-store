@@ -23,31 +23,31 @@ import (
 )
 
 const (
-	Name                          = "ks3"
-	BucketKey                     = "bucket"
-	EndpointKey                   = "endpoint"
-	AccessKeyKey                  = "access_key"
-	SecretKeyKey                  = "secret_key"
-	ProtocolKey                   = "protocol"
-	UserAgentKey                  = "user_agent"
-	MaxConnectionsKey             = "max_connections"
-	TimeoutKey                    = "timeout"
-	CreateContainerIfNotExistsKey = "create_container_if_not_exists"
+	Name                       = "ks3"
+	BucketKey                  = "bucket"
+	EndpointKey                = "endpoint"
+	AccessKeyKey               = "access_key"
+	SecretKeyKey               = "secret_key"
+	ProtocolKey                = "protocol"
+	UserAgentKey               = "user_agent"
+	MaxConnectionsKey          = "max_connections"
+	TimeoutKey                 = "timeout"
+	CreateBucketIfNotExistsKey = "create_bucket_if_not_exists"
 )
 
 const defaultAccessURLExpiry = time.Hour
 const defaultClientRegion = "BEIJING"
 
 type backendConfig struct {
-	bucket                     string
-	endpoint                   string
-	accessKey                  string
-	secretKey                  string
-	protocol                   string
-	userAgent                  string
-	maxConnections             int
-	timeout                    int
-	createContainerIfNotExists bool
+	bucket                  string
+	endpoint                string
+	accessKey               string
+	secretKey               string
+	protocol                string
+	userAgent               string
+	maxConnections          int
+	timeout                 int
+	createBucketIfNotExists bool
 }
 
 type Backend struct {
@@ -72,7 +72,7 @@ func (*Backend) ConfigOptions() []store.ConfigOption {
 		{Name: UserAgentKey, Type: "string", Example: "sharp-store", Description: "Optional User-Agent sent by the KS3 SDK."},
 		{Name: MaxConnectionsKey, Type: "int", Example: "30", Description: "Optional maximum connections per KS3 endpoint."},
 		{Name: TimeoutKey, Type: "int", Example: "100000", Description: "Optional whole-request timeout in milliseconds."},
-		{Name: CreateContainerIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the KS3 bucket before saving when it does not exist."},
+		{Name: CreateBucketIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the KS3 bucket before saving when it does not exist."},
 	}
 }
 
@@ -92,7 +92,7 @@ func (b *Backend) Save(ctx context.Context, request store.SaveRequest) (string, 
 	if err != nil {
 		return "", err
 	}
-	if err := ensureContainer(ctx, client, cfg); err != nil {
+	if err := ensureBucket(ctx, client, cfg); err != nil {
 		return "", err
 	}
 	_, err = client.UploadReaderWithContext(ctx, &ks3sdk.UploadReaderInput{
@@ -289,18 +289,18 @@ func readConfig(values map[string]string) (backendConfig, error) {
 		}
 		cfg.timeout = timeout
 	}
-	if value := values[CreateContainerIfNotExistsKey]; value != "" {
+	if value := values[CreateBucketIfNotExistsKey]; value != "" {
 		create, err := strconv.ParseBool(value)
 		if err != nil {
-			return backendConfig{}, errors.New("create_container_if_not_exists must be a boolean")
+			return backendConfig{}, fmt.Errorf("%s must be a boolean", CreateBucketIfNotExistsKey)
 		}
-		cfg.createContainerIfNotExists = create
+		cfg.createBucketIfNotExists = create
 	}
 	return cfg, nil
 }
 
-func ensureContainer(ctx context.Context, client *ks3sdk.S3, cfg backendConfig) error {
-	if !cfg.createContainerIfNotExists {
+func ensureBucket(ctx context.Context, client *ks3sdk.S3, cfg backendConfig) error {
+	if !cfg.createBucketIfNotExists {
 		return nil
 	}
 	_, err := client.HeadBucketWithContext(ctx, &ks3sdk.HeadBucketInput{Bucket: ks3aws.String(cfg.bucket)})

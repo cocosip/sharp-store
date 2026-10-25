@@ -3,6 +3,7 @@ package azure
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -45,7 +46,7 @@ func (*Backend) ValidateConfig(ctx context.Context, values map[string]string) er
 	}
 	if value := values[CreateContainerIfNotExistsKey]; value != "" {
 		if _, err := strconv.ParseBool(value); err != nil {
-			return errors.New("create_container_if_not_exists must be a boolean")
+			return fmt.Errorf("%s must be a boolean", CreateContainerIfNotExistsKey)
 		}
 	}
 	return nil

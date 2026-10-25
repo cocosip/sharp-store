@@ -9,7 +9,7 @@ import (
 
 type Config struct {
 	Bucket, Region, AccessKeyID, SecretAccessKey, SessionToken string
-	CreateContainerIfNotExists                                 bool
+	CreateBucketIfNotExists                                    bool
 }
 
 func NewConfig() Config { return Config{} }
@@ -22,8 +22,8 @@ func (c Config) WithCredentials(accessKey, secretKey string) Config {
 	return c
 }
 func (c Config) WithSessionToken(token string) Config { c.SessionToken = token; return c }
-func (c Config) WithCreateContainerIfNotExists(create bool) Config {
-	c.CreateContainerIfNotExists = create
+func (c Config) WithCreateBucketIfNotExists(create bool) Config {
+	c.CreateBucketIfNotExists = create
 	return c
 }
 
@@ -32,8 +32,8 @@ func (c Config) Values() map[string]string {
 	return map[string]string{
 		BucketKey: c.Bucket, RegionKey: c.Region,
 		AccessKeyIDKey: c.AccessKeyID, SecretAccessKeyKey: c.SecretAccessKey,
-		SessionTokenKey:               c.SessionToken,
-		CreateContainerIfNotExistsKey: strconv.FormatBool(c.CreateContainerIfNotExists),
+		SessionTokenKey:            c.SessionToken,
+		CreateBucketIfNotExistsKey: strconv.FormatBool(c.CreateBucketIfNotExists),
 	}
 }
 
@@ -41,17 +41,17 @@ func ParseConfig(config store.ContainerConfig) (Config, error) {
 	if config.Backend != Name {
 		return Config{}, fmt.Errorf("%w: expected backend %q, got %q", store.ErrInvalidConfig, Name, config.Backend)
 	}
-	createContainer := false
-	if raw := config.Values[CreateContainerIfNotExistsKey]; raw != "" {
+	createBucket := false
+	if raw := config.Values[CreateBucketIfNotExistsKey]; raw != "" {
 		var err error
-		createContainer, err = strconv.ParseBool(raw)
+		createBucket, err = strconv.ParseBool(raw)
 		if err != nil {
-			return Config{}, fmt.Errorf("%w: %s: %v", store.ErrInvalidConfig, CreateContainerIfNotExistsKey, err)
+			return Config{}, fmt.Errorf("%w: %s: %v", store.ErrInvalidConfig, CreateBucketIfNotExistsKey, err)
 		}
 	}
 	return Config{
 		Bucket: config.Values[BucketKey], Region: config.Values[RegionKey],
 		AccessKeyID: config.Values[AccessKeyIDKey], SecretAccessKey: config.Values[SecretAccessKeyKey],
-		SessionToken: config.Values[SessionTokenKey], CreateContainerIfNotExists: createContainer,
+		SessionToken: config.Values[SessionTokenKey], CreateBucketIfNotExists: createBucket,
 	}, nil
 }

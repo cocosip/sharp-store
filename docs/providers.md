@@ -24,6 +24,12 @@ All providers implement save, delete, exists, download, get/get-or-nil, and
 access URL unless noted below. `AccessURL` checks existence only when
 `AccessURLOptions.CheckExists` is true.
 
+Naming follows two layers. The library-level abstraction (`store.Container`,
+`ContainerKey`, `ContainerConfig`) is provider-neutral. Provider configuration
+keys and typed `Config` fields follow each vendor's own terminology: S3-style
+services use bucket terms, Azure Blob uses container terms, and credential
+names match the provider SDK.
+
 ## Choose a Backend
 
 | Backend name | Use it when | Credentials | `AccessURL` behavior |
@@ -35,7 +41,7 @@ access URL unless noted below. `AccessURL` checks existence only when
 | `ks3` | The target is Kingsoft Cloud KS3. | Access key and secret key | Generates a signed S3-compatible GET URL. |
 | `azure` | The target is Azure Blob Storage. | Azure Storage connection string | Unsupported; serve or sign URLs in the host application. |
 | `aliyun` | The target is Alibaba Cloud OSS. | Access key ID and access key secret | Generates an OSS signed GET URL. |
-| `obs` | The target is Huawei Cloud OBS. | Access key ID and access key secret | Generates an OBS signed GET URL. |
+| `obs` | The target is Huawei Cloud OBS. | Access key ID and secret access key | Generates an OBS signed GET URL. |
 
 All signed-URL backends accept `AccessURLOptions.ExpiresAt`. Alibaba OSS and
 Huawei OBS use one hour when no expiry is supplied. Set `CheckExists: true`
@@ -171,7 +177,7 @@ before saving.
 aws.Config{
     Bucket: "archive",
     Region: "ap-southeast-1",
-    CreateContainerIfNotExists: true,
+    CreateBucketIfNotExists: true,
 }
 ```
 
@@ -181,7 +187,7 @@ default credential chain, so it does not expose a custom endpoint or path-style
 switch. For IAM roles, workload identity, shared AWS configuration, or
 environment credentials, omit `access_key_id`, `secret_access_key`, and
 `session_token`. Static access and secret keys must be supplied together; a
-session token is accepted only with those keys. `create_container_if_not_exists`
+session token is accepted only with those keys. `create_bucket_if_not_exists`
 creates the S3 bucket before saving when necessary.
 
 ## MinIO
@@ -189,14 +195,14 @@ creates the S3 bucket before saving when necessary.
 ```go
 minio.Config{
     Bucket: "archive", Endpoint: "minio.example:9000",
-    AccessKey: "access", SecretKey: "secret", Region: "cn-east-1", SSL: true,
+    AccessKey: "access", SecretKey: "secret", Region: "cn-east-1", Secure: true,
     CreateBucketIfNotExists: true,
 }
 ```
 
 `Bucket`, `Endpoint`, `AccessKey`, and `SecretKey` are required. `Endpoint` is
 a domain name or IP address with an optional port and must not include
-`http://`, `https://`, a path, or query parameters. `SSL: true` (`with_ssl` in
+`http://`, `https://`, a path, or query parameters. `Secure: true` (`secure` in
 generic values) uses HTTPS; false uses HTTP. `Region` maps to the MinIO Go SDK
 signing region and defaults to `us-east-1`. The backend uses path-style bucket
 lookup. `create_bucket_if_not_exists` controls the pre-save bucket check and
@@ -209,7 +215,7 @@ ks3.Config{
     Bucket: "archive", Endpoint: "ks3-cn-beijing.ksyuncs.com",
     AccessKey: "access", SecretKey: "secret", Protocol: "https",
     UserAgent: "sharp-store", MaxConnections: 30, Timeout: 100000,
-    CreateContainerIfNotExists: true,
+    CreateBucketIfNotExists: true,
 }
 ```
 
@@ -253,7 +259,7 @@ saving.
 aliyun.Config{
     Endpoint: "https://oss-cn-hangzhou.aliyuncs.com", Bucket: "archive",
     AccessKeyID: "access", AccessKeySecret: "secret",
-    CreateContainerIfNotExists: true,
+    CreateBucketIfNotExists: true,
 }
 ```
 
@@ -264,7 +270,7 @@ Use `aliyun` for Alibaba Cloud OSS. Keep `AccessKeyID` and `AccessKeySecret`
 outside committed configuration files. Use `AccessURLOptions.ExpiresAt` when
 the default one-hour signed URL lifetime is not suitable. `Endpoint` is named
 after the `endpoint` argument accepted by `oss.New` and may include its HTTP(S)
-scheme. `create_container_if_not_exists` checks and creates the OSS bucket
+scheme. `create_bucket_if_not_exists` checks and creates the OSS bucket
 before saving.
 
 ## Huawei OBS
@@ -272,19 +278,19 @@ before saving.
 ```go
 obs.Config{
     Endpoint: "https://obs.cn-north-4.myhuaweicloud.com", Bucket: "archive",
-    AccessKeyID: "access", AccessKeySecret: "secret",
-    CreateContainerIfNotExists: true,
+    AccessKeyID: "access", SecretAccessKey: "secret",
+    CreateBucketIfNotExists: true,
 }
 ```
 
 All four fields are required. `AccessURL` returns an OBS signed GET URL; its
 default lifetime is one hour unless `AccessURLOptions.ExpiresAt` is supplied.
 
-Use `obs` for Huawei Cloud OBS. Keep `AccessKeyID` and `AccessKeySecret` out
+Use `obs` for Huawei Cloud OBS. Keep `AccessKeyID` and `SecretAccessKey` out
 of committed configuration files. Use `AccessURLOptions.ExpiresAt` when the
 default one-hour signed URL lifetime is not suitable. `Endpoint` is named after
 the `endpoint` argument accepted by `obs.New` and may include its HTTP(S)
-scheme. `create_container_if_not_exists` checks and creates the OBS bucket
+scheme. `create_bucket_if_not_exists` checks and creates the OBS bucket
 before saving.
 
 ## Validation and Secret Handling

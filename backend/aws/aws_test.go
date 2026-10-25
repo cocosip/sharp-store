@@ -25,12 +25,12 @@ func TestConfigPreservesAWSConnectionSettings(t *testing.T) {
 		WithRegion("ap-southeast-1").
 		WithCredentials("access", "secret").
 		WithSessionToken("token").
-		WithCreateContainerIfNotExists(true).
+		WithCreateBucketIfNotExists(true).
 		Values()
 	if got, want := values[SessionTokenKey], "token"; got != want {
 		t.Fatalf("session token = %q, want %q", got, want)
 	}
-	if got, want := values[CreateContainerIfNotExistsKey], "true"; got != want {
+	if got, want := values[CreateBucketIfNotExistsKey], "true"; got != want {
 		t.Fatalf("create container = %q, want %q", got, want)
 	}
 }
@@ -57,7 +57,7 @@ func TestBackendSaveCreatesMissingBucketWhenConfigured(t *testing.T) {
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", RegionKey: "us-east-1",
 				AccessKeyIDKey: "access", SecretAccessKeyKey: "secret",
-				CreateContainerIfNotExistsKey: "true",
+				CreateBucketIfNotExistsKey: "true",
 			}},
 			FileID: "file", Key: "tenant/file.txt",
 		},
@@ -104,7 +104,7 @@ func TestBackendSaveContinuesWhenBucketWasCreatedConcurrently(t *testing.T) {
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", RegionKey: "us-east-1",
 				AccessKeyIDKey: "access", SecretAccessKeyKey: "secret",
-				CreateContainerIfNotExistsKey: "true",
+				CreateBucketIfNotExistsKey: "true",
 			}},
 			FileID: "file", Key: "tenant/file.txt",
 		},
@@ -131,7 +131,7 @@ func TestBackendValidateConfigAllowsDefaultCredentialChain(t *testing.T) {
 }
 
 func TestBackendConfigOptionsMatchAWSSDK(t *testing.T) {
-	want := []string{BucketKey, RegionKey, AccessKeyIDKey, SecretAccessKeyKey, SessionTokenKey, CreateContainerIfNotExistsKey}
+	want := []string{BucketKey, RegionKey, AccessKeyIDKey, SecretAccessKeyKey, SessionTokenKey, CreateBucketIfNotExistsKey}
 	options := New().(store.BackendDescriptor).ConfigOptions()
 	got := make([]string, len(options))
 	for index := range options {

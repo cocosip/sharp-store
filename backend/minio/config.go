@@ -13,7 +13,7 @@ type Config struct {
 	AccessKey               string
 	SecretKey               string
 	Region                  string
-	SSL                     bool
+	Secure                  bool
 	CreateBucketIfNotExists bool
 }
 
@@ -27,7 +27,7 @@ func (c Config) WithCredentials(accessKey, secretKey string) Config {
 	return c
 }
 func (c Config) WithRegion(region string) Config { c.Region = region; return c }
-func (c Config) WithSSL(withSSL bool) Config     { c.SSL = withSSL; return c }
+func (c Config) WithSecure(secure bool) Config   { c.Secure = secure; return c }
 func (c Config) WithCreateBucketIfNotExists(create bool) Config {
 	c.CreateBucketIfNotExists = create
 	return c
@@ -40,7 +40,7 @@ func (c Config) Values() map[string]string {
 		BucketKey: c.Bucket, EndpointKey: c.Endpoint,
 		AccessKeyKey: c.AccessKey, SecretKeyKey: c.SecretKey,
 		RegionKey:                  c.Region,
-		WithSSLKey:                 strconv.FormatBool(c.SSL),
+		SecureKey:                  strconv.FormatBool(c.Secure),
 		CreateBucketIfNotExistsKey: strconv.FormatBool(c.CreateBucketIfNotExists),
 	}
 }
@@ -49,7 +49,7 @@ func ParseConfig(config store.ContainerConfig) (Config, error) {
 	if config.Backend != Name {
 		return Config{}, fmt.Errorf("%w: expected backend %q, got %q", store.ErrInvalidConfig, Name, config.Backend)
 	}
-	withSSL, err := parseConfigBool(config.Values, WithSSLKey)
+	secure, err := parseConfigBool(config.Values, SecureKey)
 	if err != nil {
 		return Config{}, err
 	}
@@ -60,7 +60,7 @@ func ParseConfig(config store.ContainerConfig) (Config, error) {
 	return Config{
 		Bucket: config.Values[BucketKey], Endpoint: config.Values[EndpointKey],
 		AccessKey: config.Values[AccessKeyKey], SecretKey: config.Values[SecretKeyKey],
-		Region: config.Values[RegionKey], SSL: withSSL, CreateBucketIfNotExists: createBucket,
+		Region: config.Values[RegionKey], Secure: secure, CreateBucketIfNotExists: createBucket,
 	}, nil
 }
 

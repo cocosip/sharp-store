@@ -23,22 +23,22 @@ import (
 )
 
 const (
-	Name                          = "aws"
-	BucketKey                     = "bucket"
-	RegionKey                     = "region"
-	AccessKeyIDKey                = "access_key_id"
-	SecretAccessKeyKey            = "secret_access_key"
-	SessionTokenKey               = "session_token"
-	CreateContainerIfNotExistsKey = "create_container_if_not_exists"
+	Name                       = "aws"
+	BucketKey                  = "bucket"
+	RegionKey                  = "region"
+	AccessKeyIDKey             = "access_key_id"
+	SecretAccessKeyKey         = "secret_access_key"
+	SessionTokenKey            = "session_token"
+	CreateBucketIfNotExistsKey = "create_bucket_if_not_exists"
 )
 
 type backendConfig struct {
-	bucket                     string
-	region                     string
-	accessKeyID                string
-	secretAccessKey            string
-	sessionToken               string
-	createContainerIfNotExists bool
+	bucket                  string
+	region                  string
+	accessKeyID             string
+	secretAccessKey         string
+	sessionToken            string
+	createBucketIfNotExists bool
 }
 
 type Backend struct {
@@ -57,7 +57,7 @@ func (*Backend) ConfigOptions() []store.ConfigOption {
 		{Name: AccessKeyIDKey, Type: "string", Sensitive: true, Description: "Optional static access key ID; omit it to use the AWS default credential chain."},
 		{Name: SecretAccessKeyKey, Type: "string", Sensitive: true, Description: "Optional static secret access key."},
 		{Name: SessionTokenKey, Type: "string", Sensitive: true, Description: "Optional session token for static temporary credentials."},
-		{Name: CreateContainerIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the S3 bucket before saving when it does not exist."},
+		{Name: CreateBucketIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the S3 bucket before saving when it does not exist."},
 	}
 }
 
@@ -77,7 +77,7 @@ func (b *Backend) Save(ctx context.Context, request store.SaveRequest) (string, 
 	if err != nil {
 		return "", err
 	}
-	if err := ensureContainer(ctx, client, cfg); err != nil {
+	if err := ensureBucket(ctx, client, cfg); err != nil {
 		return "", err
 	}
 	input := &awss3.PutObjectInput{Bucket: aws.String(cfg.bucket), Key: aws.String(request.Key), Body: request.Body}
@@ -235,18 +235,18 @@ func readConfig(values map[string]string) (backendConfig, error) {
 	if cfg.sessionToken != "" && cfg.accessKeyID == "" {
 		return backendConfig{}, errors.New("session_token requires static access_key_id and secret_access_key")
 	}
-	if value := values[CreateContainerIfNotExistsKey]; value != "" {
+	if value := values[CreateBucketIfNotExistsKey]; value != "" {
 		create, err := strconv.ParseBool(value)
 		if err != nil {
-			return backendConfig{}, errors.New("create_container_if_not_exists must be a boolean")
+			return backendConfig{}, fmt.Errorf("%s must be a boolean", CreateBucketIfNotExistsKey)
 		}
-		cfg.createContainerIfNotExists = create
+		cfg.createBucketIfNotExists = create
 	}
 	return cfg, nil
 }
 
-func ensureContainer(ctx context.Context, client *awss3.Client, cfg backendConfig) error {
-	if !cfg.createContainerIfNotExists {
+func ensureBucket(ctx context.Context, client *awss3.Client, cfg backendConfig) error {
+	if !cfg.createBucketIfNotExists {
 		return nil
 	}
 	_, err := client.HeadBucket(ctx, &awss3.HeadBucketInput{Bucket: aws.String(cfg.bucket)})

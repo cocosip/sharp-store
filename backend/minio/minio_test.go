@@ -22,7 +22,7 @@ func TestBackendValidateConfigRequiresMinIOConnectionSettings(t *testing.T) {
 		AccessKeyKey: "access",
 		SecretKeyKey: "secret",
 		RegionKey:    "cn-east-1",
-		WithSSLKey:   "true",
+		SecureKey:    "true",
 	}
 	for _, key := range []string{BucketKey, EndpointKey, AccessKeyKey, SecretKeyKey} {
 		t.Run(key, func(t *testing.T) {
@@ -52,7 +52,7 @@ func TestBackendSaveUsesMinIOSDKAndConditionalPut(t *testing.T) {
 		FileRequest: store.FileRequest{
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", EndpointKey: endpoint,
-				AccessKeyKey: "access", SecretKeyKey: "secret", RegionKey: "cn-east-1", WithSSLKey: "false",
+				AccessKeyKey: "access", SecretKeyKey: "secret", RegionKey: "cn-east-1", SecureKey: "false",
 			}},
 			FileID: "file",
 			Key:    "tenant/file.txt",
@@ -90,7 +90,7 @@ func TestBackendSaveFailsWhenUploadReaderPositionCannotBeRestored(t *testing.T) 
 		FileRequest: store.FileRequest{
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", EndpointKey: endpoint,
-				AccessKeyKey: "access", SecretKeyKey: "secret", WithSSLKey: "false",
+				AccessKeyKey: "access", SecretKeyKey: "secret", SecureKey: "false",
 			}},
 			FileID: "file", Key: "tenant/file.txt",
 		},
@@ -117,7 +117,7 @@ func TestBackendSaveDoesNotClassifyUnrelatedConflictAsExistingFile(t *testing.T)
 		FileRequest: store.FileRequest{
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", EndpointKey: endpoint,
-				AccessKeyKey: "access", SecretKeyKey: "secret", WithSSLKey: "false",
+				AccessKeyKey: "access", SecretKeyKey: "secret", SecureKey: "false",
 			}},
 			FileID: "file", Key: "tenant/file.txt",
 		},
@@ -160,7 +160,7 @@ func TestBackendValidateConfigRejectsInvalidEndpointAndUseSSL(t *testing.T) {
 	tests := []map[string]string{
 		{BucketKey: "archive", EndpointKey: "https://minio.example.test:9000", AccessKeyKey: "access", SecretKeyKey: "secret"},
 		{BucketKey: "archive", EndpointKey: "minio.example.test:9000/storage", AccessKeyKey: "access", SecretKeyKey: "secret"},
-		{BucketKey: "archive", EndpointKey: "minio.example.test:9000", AccessKeyKey: "access", SecretKeyKey: "secret", WithSSLKey: "enabled"},
+		{BucketKey: "archive", EndpointKey: "minio.example.test:9000", AccessKeyKey: "access", SecretKeyKey: "secret", SecureKey: "enabled"},
 	}
 	for _, values := range tests {
 		if err := New().(store.BackendConfigValidator).ValidateConfig(context.Background(), values); err == nil {
@@ -170,7 +170,7 @@ func TestBackendValidateConfigRejectsInvalidEndpointAndUseSSL(t *testing.T) {
 }
 
 func TestBackendConfigOptionsMatchMinIOSDK(t *testing.T) {
-	want := []string{BucketKey, EndpointKey, AccessKeyKey, SecretKeyKey, RegionKey, WithSSLKey, CreateBucketIfNotExistsKey}
+	want := []string{BucketKey, EndpointKey, AccessKeyKey, SecretKeyKey, RegionKey, SecureKey, CreateBucketIfNotExistsKey}
 	options := New().(store.BackendDescriptor).ConfigOptions()
 	if len(options) != len(want) {
 		t.Fatalf("ConfigOptions() count = %d, want %d: %#v", len(options), len(want), options)
@@ -188,12 +188,12 @@ func TestConfigValuesUsesMinIOSDKSettings(t *testing.T) {
 		WithEndpoint("minio.example.test:9000").
 		WithCredentials("access", "secret").
 		WithRegion("cn-east-1").
-		WithSSL(true).
+		WithSecure(true).
 		WithCreateBucketIfNotExists(true).
 		Values()
 	want := map[string]string{
 		BucketKey: "archive", EndpointKey: "minio.example.test:9000",
-		AccessKeyKey: "access", SecretKeyKey: "secret", RegionKey: "cn-east-1", WithSSLKey: "true",
+		AccessKeyKey: "access", SecretKeyKey: "secret", RegionKey: "cn-east-1", SecureKey: "true",
 		CreateBucketIfNotExistsKey: "true",
 	}
 	if !maps.Equal(values, want) {
@@ -221,7 +221,7 @@ func TestBackendSaveCreatesMissingBucketWhenConfigured(t *testing.T) {
 		FileRequest: store.FileRequest{
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", EndpointKey: endpoint,
-				AccessKeyKey: "access", SecretKeyKey: "secret", WithSSLKey: "false",
+				AccessKeyKey: "access", SecretKeyKey: "secret", SecureKey: "false",
 				CreateBucketIfNotExistsKey: "true",
 			}},
 			FileID: "file",
@@ -271,7 +271,7 @@ func TestBackendSaveContinuesWhenBucketWasCreatedConcurrently(t *testing.T) {
 		FileRequest: store.FileRequest{
 			Config: store.ContainerConfig{Values: map[string]string{
 				BucketKey: "archive", EndpointKey: endpoint,
-				AccessKeyKey: "access", SecretKeyKey: "secret", WithSSLKey: "false",
+				AccessKeyKey: "access", SecretKeyKey: "secret", SecureKey: "false",
 				CreateBucketIfNotExistsKey: "true",
 			}},
 			FileID: "file", Key: "tenant/file.txt",

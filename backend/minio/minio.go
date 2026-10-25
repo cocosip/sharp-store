@@ -25,7 +25,7 @@ const (
 	AccessKeyKey               = "access_key"
 	SecretKeyKey               = "secret_key"
 	RegionKey                  = "region"
-	WithSSLKey                 = "with_ssl"
+	SecureKey                  = "secure"
 	CreateBucketIfNotExistsKey = "create_bucket_if_not_exists"
 )
 
@@ -38,7 +38,7 @@ type backendConfig struct {
 	accessKey               string
 	secretKey               string
 	region                  string
-	withSSL                 bool
+	secure                  bool
 	createBucketIfNotExists bool
 }
 
@@ -61,7 +61,7 @@ func (*Backend) ConfigOptions() []store.ConfigOption {
 		{Name: AccessKeyKey, Type: "string", Required: true, Sensitive: true, Description: "MinIO access key."},
 		{Name: SecretKeyKey, Type: "string", Required: true, Sensitive: true, Description: "MinIO secret key."},
 		{Name: RegionKey, Type: "string", Example: defaultRegion, Description: "MinIO region used for request signing. Defaults to us-east-1."},
-		{Name: WithSSLKey, Type: "bool", Example: "true", Description: "Use HTTPS for the configured endpoint."},
+		{Name: SecureKey, Type: "bool", Example: "true", Description: "Use HTTPS for the configured endpoint."},
 		{Name: CreateBucketIfNotExistsKey, Type: "bool", Example: "false", Description: "Create the bucket before saving when it does not exist."},
 	}
 }
@@ -200,7 +200,7 @@ func (b *Backend) client(ctx context.Context, values map[string]string) (*minios
 	}
 	client, err := miniosdk.New(cfg.endpoint, &miniosdk.Options{
 		Creds:        credentials.NewStaticV4(cfg.accessKey, cfg.secretKey, ""),
-		Secure:       cfg.withSSL,
+		Secure:       cfg.secure,
 		Region:       cfg.region,
 		BucketLookup: miniosdk.BucketLookupPath,
 	})
@@ -256,17 +256,17 @@ func readConfig(values map[string]string) (backendConfig, error) {
 	if cfg.region == "" {
 		cfg.region = defaultRegion
 	}
-	if value := values[WithSSLKey]; value != "" {
-		withSSL, err := strconv.ParseBool(value)
+	if value := values[SecureKey]; value != "" {
+		secure, err := strconv.ParseBool(value)
 		if err != nil {
-			return backendConfig{}, errors.New("with_ssl must be a boolean")
+			return backendConfig{}, fmt.Errorf("%s must be a boolean", SecureKey)
 		}
-		cfg.withSSL = withSSL
+		cfg.secure = secure
 	}
 	if value := values[CreateBucketIfNotExistsKey]; value != "" {
 		create, err := strconv.ParseBool(value)
 		if err != nil {
-			return backendConfig{}, errors.New("create_bucket_if_not_exists must be a boolean")
+			return backendConfig{}, fmt.Errorf("%s must be a boolean", CreateBucketIfNotExistsKey)
 		}
 		cfg.createBucketIfNotExists = create
 	}
