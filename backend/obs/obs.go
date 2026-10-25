@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	store "github.com/cocosip/sharp-store"
+	"github.com/cocosip/sharp-store/backend/internal/fileutil"
 	obsdk "github.com/huaweicloud/huaweicloud-sdk-go-obs/obs"
 )
 
@@ -26,6 +25,12 @@ const (
 )
 
 type Backend struct{ clients sync.Map }
+
+type clientKey struct {
+	endpoint        string
+	accessKeyID     string
+	secretAccessKey string
+}
 
 func New() store.Backend      { return &Backend{} }
 func (*Backend) Name() string { return Name }
@@ -118,16 +123,7 @@ func (b *Backend) Download(ctx context.Context, r store.DownloadRequest) (bool, 
 		return false, err
 	}
 	defer func() { _ = reader.Close() }()
-	if err = os.MkdirAll(filepath.Dir(r.Destination), 0o755); err != nil {
-		return false, err
-	}
-	f, err := os.OpenFile(r.Destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = f.Close() }()
-	_, err = io.Copy(f, reader)
-	return err == nil, err
+	return fileutil.WriteFile(r.Destination, reader)
 }
 func (b *Backend) GetOrNil(ctx context.Context, r store.FileRequest) (io.ReadCloser, error) {
 	if err := ctx.Err(); err != nil {
@@ -178,7 +174,7 @@ func (b *Backend) client(ctx context.Context, v map[string]string) (*obsdk.ObsCl
 	if err := b.ValidateConfig(ctx, v); err != nil {
 		return nil, "", err
 	}
-	key := v[EndpointKey] + "\x00" + v[AccessKeyIDKey] + "\x00" + v[SecretAccessKeyKey]
+	key := clientKey{endpoint: v[EndpointKey], accessKeyID: v[AccessKeyIDKey], secretAccessKey: v[SecretAccessKeyKey]}
 	if x, ok := b.clients.Load(key); ok {
 		return x.(*obsdk.ObsClient), v[BucketKey], nil
 	}

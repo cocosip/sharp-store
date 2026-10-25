@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strconv"
 	"sync"
 
@@ -14,6 +12,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	store "github.com/cocosip/sharp-store"
+	"github.com/cocosip/sharp-store/backend/internal/fileutil"
 )
 
 const (
@@ -128,16 +127,7 @@ func (b *Backend) Download(ctx context.Context, r store.DownloadRequest) (bool, 
 		return false, err
 	}
 	defer func() { _ = reader.Close() }()
-	if err := os.MkdirAll(filepath.Dir(r.Destination), 0o755); err != nil {
-		return false, err
-	}
-	f, err := os.OpenFile(r.Destination, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = f.Close() }()
-	_, err = io.Copy(f, reader)
-	return err == nil, err
+	return fileutil.WriteFile(r.Destination, reader)
 }
 func (b *Backend) GetOrNil(ctx context.Context, r store.FileRequest) (io.ReadCloser, error) {
 	c, container, err := b.client(ctx, r.Config.Values)

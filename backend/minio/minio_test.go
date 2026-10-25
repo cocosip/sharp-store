@@ -156,7 +156,7 @@ func (r *restoreFailingSeeker) Seek(offset int64, whence int) (int64, error) {
 	}
 }
 
-func TestBackendValidateConfigRejectsInvalidEndpointAndUseSSL(t *testing.T) {
+func TestBackendValidateConfigRejectsInvalidEndpointAndSecure(t *testing.T) {
 	tests := []map[string]string{
 		{BucketKey: "archive", EndpointKey: "https://minio.example.test:9000", AccessKeyKey: "access", SecretKeyKey: "secret"},
 		{BucketKey: "archive", EndpointKey: "minio.example.test:9000/storage", AccessKeyKey: "access", SecretKeyKey: "secret"},

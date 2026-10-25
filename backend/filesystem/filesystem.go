@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	store "github.com/cocosip/sharp-store"
+	"github.com/cocosip/sharp-store/backend/internal/fileutil"
 )
 
 const (
@@ -173,19 +174,7 @@ func (b *Backend) Download(ctx context.Context, request store.DownloadRequest) (
 		return false, nil
 	}
 	defer func() { _ = reader.Close() }()
-
-	if err := os.MkdirAll(filepath.Dir(request.Destination), 0o755); err != nil {
-		return false, err
-	}
-	file, err := os.OpenFile(request.Destination, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = file.Close() }()
-	if _, err := io.Copy(file, reader); err != nil {
-		return false, err
-	}
-	return true, file.Sync()
+	return fileutil.WriteFile(request.Destination, reader)
 }
 
 func (b *Backend) GetOrNil(ctx context.Context, request store.FileRequest) (io.ReadCloser, error) {

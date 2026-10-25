@@ -26,6 +26,12 @@ const (
 
 type Backend struct{ clients sync.Map }
 
+type clientKey struct {
+	endpoint        string
+	accessKeyID     string
+	accessKeySecret string
+}
+
 func New() store.Backend      { return &Backend{} }
 func (*Backend) Name() string { return Name }
 func (*Backend) ConfigOptions() []store.ConfigOption {
@@ -164,7 +170,7 @@ func (b *Backend) bucket(ctx context.Context, v map[string]string) (*oss.Bucket,
 	if err := b.ValidateConfig(ctx, v); err != nil {
 		return nil, err
 	}
-	key := v[EndpointKey] + "\x00" + v[AccessKeyIDKey] + "\x00" + v[AccessKeySecretKey]
+	key := clientKey{endpoint: v[EndpointKey], accessKeyID: v[AccessKeyIDKey], accessKeySecret: v[AccessKeySecretKey]}
 	var client *oss.Client
 	if x, ok := b.clients.Load(key); ok {
 		client = x.(*oss.Client)

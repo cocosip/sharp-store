@@ -7,7 +7,6 @@ import (
 
 var (
 	ErrContainerNotFound = errors.New("container configuration not found")
-	ErrContainerExists   = errors.New("container configuration already exists")
 	ErrBackendNotFound   = errors.New("storage backend not found")
 	ErrFileNotFound      = errors.New("file not found")
 	ErrFileExists        = errors.New("file already exists")
