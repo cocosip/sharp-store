@@ -85,9 +85,12 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	err = bucket.PutObject(r.Key, r.Body, oss.ForbidOverWrite(!r.Overwrite), oss.WithContext(ctx))
 	var serviceError oss.ServiceError
 	if !r.Overwrite && errors.As(err, &serviceError) && serviceError.Code == "FileAlreadyExists" {
-		return "", store.ErrFileExists
+		return "", fmt.Errorf("%w: %s", store.ErrFileExists, r.FileID)
 	}
-	return r.FileID, err
+	if err != nil {
+		return "", err
+	}
+	return r.FileID, nil
 }
 func (b *Backend) Delete(ctx context.Context, r store.FileRequest) (bool, error) {
 	if err := ctx.Err(); err != nil {
@@ -97,11 +100,11 @@ func (b *Backend) Delete(ctx context.Context, r store.FileRequest) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	exists, err := bucket.IsObjectExist(r.Key)
+	exists, err := bucket.IsObjectExist(r.Key, oss.WithContext(ctx))
 	if err != nil || !exists {
 		return false, err
 	}
-	err = bucket.DeleteObject(r.Key)
+	err = bucket.DeleteObject(r.Key, oss.WithContext(ctx))
 	return err == nil, err
 }
 func (b *Backend) Exists(ctx context.Context, r store.FileRequest) (bool, error) {
@@ -112,7 +115,7 @@ func (b *Backend) Exists(ctx context.Context, r store.FileRequest) (bool, error)
 	if err != nil {
 		return false, err
 	}
-	return bucket.IsObjectExist(r.Key)
+	return bucket.IsObjectExist(r.Key, oss.WithContext(ctx))
 }
 func (b *Backend) Download(ctx context.Context, r store.DownloadRequest) (bool, error) {
 	bucket, err := b.bucket(ctx, r.Config.Values)
@@ -122,7 +125,7 @@ func (b *Backend) Download(ctx context.Context, r store.DownloadRequest) (bool, 
 	if err = os.MkdirAll(filepath.Dir(r.Destination), 0o755); err != nil {
 		return false, err
 	}
-	err = bucket.GetObjectToFile(r.Key, r.Destination)
+	err = bucket.GetObjectToFile(r.Key, r.Destination, oss.WithContext(ctx))
 	if isNotFound(err) {
 		return false, nil
 	}
@@ -136,7 +139,7 @@ func (b *Backend) GetOrNil(ctx context.Context, r store.FileRequest) (io.ReadClo
 	if err != nil {
 		return nil, err
 	}
-	reader, err := bucket.GetObject(r.Key)
+	reader, err := bucket.GetObject(r.Key, oss.WithContext(ctx))
 	if isNotFound(err) {
 		return nil, nil
 	}

@@ -9,6 +9,10 @@ import (
 
 const DefaultConfigCacheTTL = 5 * time.Minute
 
+// cacheSweepMinInterval bounds how often expired entries are swept when the
+// cache stays small.
+const cacheSweepMinInterval = 16
+
 // ConfigCache caches resolved container configuration. Cache implementations
 // receive the same TenantContext as ConfigSource implementations.
 type ConfigCache interface {
@@ -51,6 +55,10 @@ type MemoryConfigCache struct {
 	ttl     time.Duration
 	now     func() time.Time
 	version uint64
+	// nextSweep is the entry count at which the next full sweep runs, so the
+	// sweep cost stays amortized O(1) per write while abandoned keys cannot
+	// accumulate forever.
+	nextSweep int
 }
 
 func NewMemoryConfigCache(options ...MemoryConfigCacheOptions) ConfigCache {
@@ -63,9 +71,28 @@ func NewMemoryConfigCache(options ...MemoryConfigCacheOptions) ConfigCache {
 
 func newMemoryConfigCache(ttl time.Duration, now func() time.Time) *MemoryConfigCache {
 	return &MemoryConfigCache{
-		entries: make(map[memoryConfigCacheKey]memoryConfigCacheEntry),
-		ttl:     ttl,
-		now:     now,
+		entries:   make(map[memoryConfigCacheKey]memoryConfigCacheEntry),
+		ttl:       ttl,
+		now:       now,
+		nextSweep: cacheSweepMinInterval,
+	}
+}
+
+// maybeSweepLocked removes expired entries once the map has grown back to the
+// size recorded after the previous sweep. Caller must hold the write lock.
+func (c *MemoryConfigCache) maybeSweepLocked() {
+	if len(c.entries) < c.nextSweep {
+		return
+	}
+	now := c.now()
+	for key, entry := range c.entries {
+		if !now.Before(entry.expiresAt) {
+			delete(c.entries, key)
+		}
+	}
+	c.nextSweep = 2 * len(c.entries)
+	if c.nextSweep < cacheSweepMinInterval {
+		c.nextSweep = cacheSweepMinInterval
 	}
 }
 
@@ -119,6 +146,7 @@ func (c *MemoryConfigCache) Set(
 		expiresAt: c.now().Add(c.ttl),
 	}
 	c.mu.Lock()
+	c.maybeSweepLocked()
 	c.entries[newMemoryConfigCacheKey(key, tenant)] = entry
 	c.version++
 	c.mu.Unlock()

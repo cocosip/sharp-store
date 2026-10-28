@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 )
@@ -241,6 +242,77 @@ func TestFactory_ConfigFillDoesNotOverwriteMutation(t *testing.T) {
 				t.Fatalf("new cache value overwritten: %#v", config)
 			}
 		})
+	}
+}
+
+type erroringReadCache struct {
+	ConfigCache
+	readErr error
+}
+
+func (c *erroringReadCache) Get(
+	context.Context,
+	ContainerKey,
+	TenantContext,
+) (ContainerConfig, bool, error) {
+	return ContainerConfig{}, false, c.readErr
+}
+
+func TestFactory_UnversionedCacheReadErrorIsAMiss(t *testing.T) {
+	source := &countingConfigSource{config: ContainerConfig{Backend: "memory"}}
+	cache := &erroringReadCache{ConfigCache: NewMemoryConfigCache(), readErr: errors.New("cache down")}
+	factory, err := NewFactory(
+		NewConfigOptions(source).WithCache(cache),
+		NewContainerOptions(NewBackendRegistry(newMemoryBackend("memory"))),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := factory.Open(context.Background(), "files", NoTenant()); err != nil {
+			t.Fatalf("Open() error = %v, want loads served by the source", err)
+		}
+	}
+	if source.callCount() != 2 {
+		t.Fatalf("ConfigSource.Load() calls = %d, want 2", source.callCount())
+	}
+}
+
+type erroringFillCache struct {
+	*MemoryConfigCache
+	fillErr error
+}
+
+func (c *erroringFillCache) SetIfVersion(
+	context.Context,
+	ContainerKey,
+	TenantContext,
+	ContainerConfig,
+	string,
+) (bool, error) {
+	return false, c.fillErr
+}
+
+func TestFactory_FillErrorDoesNotFailOpen(t *testing.T) {
+	source := &countingConfigSource{config: ContainerConfig{Backend: "memory"}}
+	cache := &erroringFillCache{
+		MemoryConfigCache: NewMemoryConfigCache().(*MemoryConfigCache),
+		fillErr:           errors.New("cache read-only"),
+	}
+	factory, err := NewFactory(
+		NewConfigOptions(source).WithCache(cache),
+		NewContainerOptions(NewBackendRegistry(newMemoryBackend("memory"))),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := factory.Open(context.Background(), "files", NoTenant()); err != nil {
+			t.Fatalf("Open() error = %v, want fill failure ignored", err)
+		}
+	}
+	if source.callCount() != 2 {
+		t.Fatalf("ConfigSource.Load() calls = %d, want 2", source.callCount())
 	}
 }
 

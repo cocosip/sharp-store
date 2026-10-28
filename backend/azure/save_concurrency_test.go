@@ -38,6 +38,7 @@ func TestBackend_SaveNoOverwriteIsAtomic(t *testing.T) {
 	ready := make(chan struct{})
 	var mu sync.Mutex
 	var object []byte
+	var blocks stagedBlockUpload
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if arrivals.Add(1) == 2 {
 			close(ready)
@@ -58,9 +59,8 @@ func TestBackend_SaveNoOverwriteIsAtomic(t *testing.T) {
 			w.WriteHeader(405)
 			return
 		}
-		data, err := io.ReadAll(r.Body)
-		if err != nil {
-			w.WriteHeader(500)
+		data, committed := blocks.handlePut(w, r)
+		if !committed {
 			return
 		}
 		mu.Lock()

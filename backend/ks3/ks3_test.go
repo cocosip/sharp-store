@@ -144,6 +144,29 @@ func TestBackendClientAppliesConnectionSettings(t *testing.T) {
 	}
 }
 
+func TestBackendClientDefaultsToSecureProtocol(t *testing.T) {
+	tests := []struct {
+		protocol       string
+		wantDisableSSL bool
+	}{
+		{protocol: "", wantDisableSSL: false},
+		{protocol: "https", wantDisableSSL: false},
+		{protocol: "http", wantDisableSSL: true},
+	}
+	for _, test := range tests {
+		client, cfg, err := (&Backend{}).client(context.Background(), map[string]string{
+			BucketKey: "archive", EndpointKey: "ks3.example.test",
+			AccessKeyKey: "access", SecretKeyKey: "secret", ProtocolKey: test.protocol,
+		})
+		if err != nil {
+			t.Fatalf("client(%q) error = %v", test.protocol, err)
+		}
+		if client.Config.DisableSSL != test.wantDisableSSL {
+			t.Fatalf("protocol %q DisableSSL = %t, want %t", cfg.protocol, client.Config.DisableSSL, test.wantDisableSSL)
+		}
+	}
+}
+
 func TestBackendSaveUploadsReaderWithoutKnownLength(t *testing.T) {
 	var body string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

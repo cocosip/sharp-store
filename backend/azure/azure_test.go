@@ -3,7 +3,9 @@ package azure
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -90,9 +92,64 @@ func TestBackendSaveCreatesMissingContainerWhenConfigured(t *testing.T) {
 	}
 }
 
+// stagedBlockUpload fakes the PUT requests the SDK's UploadStream issues: a
+// single PutBlob for payloads under one block, or PutBlock plus PutBlockList
+// otherwise. It returns the published payload with ok=true when a request
+// writes blob content (PutBlob or PutBlockList); the caller then decides
+// between success and a conditional-write conflict. It returns ok=false when
+// it handled the request itself (a staged block or an error).
+type stagedBlockUpload struct {
+	mu     sync.Mutex
+	blocks map[string][]byte
+}
+
+func (s *stagedBlockUpload) handlePut(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	switch r.URL.Query().Get("comp") {
+	case "":
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return nil, false
+		}
+		return body, true
+	case "block":
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return nil, false
+		}
+		s.mu.Lock()
+		if s.blocks == nil {
+			s.blocks = make(map[string][]byte)
+		}
+		s.blocks[r.URL.Query().Get("blockid")] = body
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		return nil, false
+	case "blocklist":
+		var list struct {
+			Latest []string `xml:"Latest"`
+		}
+		if err := xml.NewDecoder(r.Body).Decode(&list); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return nil, false
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		var data []byte
+		for _, id := range list.Latest {
+			data = append(data, s.blocks[id]...)
+		}
+		return data, true
+	}
+	w.WriteHeader(http.StatusBadRequest)
+	return nil, false
+}
+
 func TestBackendHonorsBlobObjectContractAgainstLocalEndpoint(t *testing.T) {
 	objects := make(map[string][]byte)
 	var mu sync.Mutex
+	var blocks stagedBlockUpload
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		const objectPath = "/devstoreaccount1/archive/tenant-a/instance.dcm"
 		if r.URL.Path != objectPath {
@@ -103,6 +160,10 @@ func TestBackendHonorsBlobObjectContractAgainstLocalEndpoint(t *testing.T) {
 		defer mu.Unlock()
 		switch r.Method {
 		case http.MethodPut:
+			data, committed := blocks.handlePut(w, r)
+			if !committed {
+				return
+			}
 			if _, exists := objects[r.URL.Path]; exists && r.Header.Get("If-None-Match") == "*" {
 				w.Header().Set("Content-Type", "application/xml")
 				w.Header().Set("x-ms-error-code", "ConditionNotMet")
@@ -111,12 +172,7 @@ func TestBackendHonorsBlobObjectContractAgainstLocalEndpoint(t *testing.T) {
 				_, _ = io.WriteString(w, "<Error><Code>ConditionNotMet</Code><Message>exists</Message></Error>")
 				return
 			}
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			objects[r.URL.Path] = body
+			objects[r.URL.Path] = data
 			w.Header().Set("ETag", "\"local-etag\"")
 			w.WriteHeader(http.StatusCreated)
 		case http.MethodHead:
@@ -129,7 +185,7 @@ func TestBackendHonorsBlobObjectContractAgainstLocalEndpoint(t *testing.T) {
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
-			w.Header().Set("Content-Length", "10")
+			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 			_, _ = w.Write(body)
 		case http.MethodDelete:
 			if _, ok := objects[r.URL.Path]; !ok {

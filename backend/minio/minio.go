@@ -141,13 +141,21 @@ func (b *Backend) GetOrNil(ctx context.Context, request store.FileRequest) (io.R
 	if err != nil {
 		return nil, err
 	}
-	if _, err = client.StatObject(ctx, cfg.bucket, request.Key, miniosdk.StatObjectOptions{}); err != nil {
+	object, err := client.GetObject(ctx, cfg.bucket, request.Key, miniosdk.GetObjectOptions{})
+	if err == nil {
+		// Stat resolves not-found up front and primes the object's cached
+		// size, so the first Read streams the GET already in flight instead
+		// of issuing a separate stat request.
+		_, err = object.Stat()
+	}
+	if err != nil {
+		_ = object.Close()
 		if isNotFound(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return client.GetObject(ctx, cfg.bucket, request.Key, miniosdk.GetObjectOptions{})
+	return object, nil
 }
 
 func (b *Backend) AccessURL(ctx context.Context, request store.AccessURLRequest) (string, error) {

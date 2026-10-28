@@ -67,7 +67,7 @@ func (*Backend) ConfigOptions() []store.ConfigOption {
 		{Name: EndpointKey, Type: "string", Required: true, Example: "ks3-cn-beijing.ksyuncs.com", Description: "KS3 host or IP with an optional port, without a URL scheme."},
 		{Name: AccessKeyKey, Type: "string", Required: true, Sensitive: true, Description: "KS3 access key."},
 		{Name: SecretKeyKey, Type: "string", Required: true, Sensitive: true, Description: "KS3 secret key."},
-		{Name: ProtocolKey, Type: "string", Example: "https", Description: "Protocol for the configured endpoint: http or https. Defaults to http."},
+		{Name: ProtocolKey, Type: "string", Example: "https", Description: "Protocol for the configured endpoint: http or https. Defaults to https."},
 		{Name: UserAgentKey, Type: "string", Example: "sharp-store", Description: "Optional User-Agent sent by the KS3 SDK."},
 		{Name: MaxConnectionsKey, Type: "int", Example: "30", Description: "Optional maximum connections per KS3 endpoint."},
 		{Name: TimeoutKey, Type: "int", Example: "100000", Description: "Optional whole-request timeout in milliseconds."},
@@ -258,7 +258,7 @@ func readConfig(values map[string]string) (backendConfig, error) {
 		return backendConfig{}, err
 	}
 	if cfg.protocol == "" {
-		cfg.protocol = "http"
+		cfg.protocol = "https"
 	}
 	if cfg.protocol != "http" && cfg.protocol != "https" {
 		return backendConfig{}, errors.New("protocol must be http or https")

@@ -61,20 +61,16 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	if err := ensureContainer(ctx, c, container, r.Config.Values[CreateContainerIfNotExistsKey]); err != nil {
 		return "", err
 	}
-	options := &azblob.UploadBufferOptions{}
+	options := &azblob.UploadStreamOptions{}
 	if !r.Overwrite {
 		etag := azcore.ETag("*")
 		options.AccessConditions = &blob.AccessConditions{ModifiedAccessConditions: &blob.ModifiedAccessConditions{IfNoneMatch: &etag}}
 	}
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		return "", err
-	}
-	_, err = c.UploadBuffer(ctx, container, r.Key, data, options)
+	_, err = c.UploadStream(ctx, container, r.Key, r.Body, options)
 	if err != nil {
 		var responseError *azcore.ResponseError
 		if !r.Overwrite && errors.As(err, &responseError) && (responseError.ErrorCode == "ConditionNotMet" || responseError.ErrorCode == "BlobAlreadyExists") {
-			return "", store.ErrFileExists
+			return "", fmt.Errorf("%w: %s", store.ErrFileExists, r.FileID)
 		}
 		return "", err
 	}

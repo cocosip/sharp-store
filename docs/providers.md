@@ -92,7 +92,7 @@ func saveReport(ctx context.Context) error {
 ```
 
 With the default key builder, that example stores the object with key
-`acme/2026/summary`. Set `TenantMode: store.TenantShared` on the resulting
+`acme/2026/summary.pdf`. Set `TenantMode: store.TenantShared` on the resulting
 `ContainerConfig` when objects must not be partitioned by tenant. See
 [configuration sources](config-sources.md) for built-in memory configuration
 and application-owned Viper, file, or database adapters.
@@ -222,7 +222,7 @@ ks3.Config{
 `Bucket`, `Endpoint`, `AccessKey`, and `SecretKey` are required. `Endpoint` is
 a domain name or IP address with an optional port and must not include
 `http://`, `https://`, a path, or query parameters. `Protocol` must be `http`
-or `https` and defaults to `http`.
+or `https` and defaults to `https`.
 
 This backend uses the KS3 SDK with its V2 signer and KS3 overwrite-prevention
 header; it does not route through the AWS S3 backend. `user_agent` is optional.
@@ -246,10 +246,9 @@ azure.Config{
 supports object operations through the Azure Blob SDK. It does not generate
 access URLs, so `AccessURL` returns `store.ErrUnsupported`.
 
-The backend currently reads the complete `Save` body into memory before
-uploading. Applications storing large objects should account for that memory
-requirement. Generate Azure SAS URLs or expose downloads through the host
-application when clients need direct access. Set
+Saves stream the body through the SDK's block upload, so object size is not
+bounded by process memory. Generate Azure SAS URLs or expose downloads through
+the host application when clients need direct access. Set
 `create_container_if_not_exists` to check and create the blob container before
 saving.
 

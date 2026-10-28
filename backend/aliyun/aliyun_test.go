@@ -206,6 +206,73 @@ func TestBackendHonorsObjectContractAgainstLocalEndpoint(t *testing.T) {
 	}
 }
 
+func TestBackendOperationsHonorCanceledContext(t *testing.T) {
+	backend := New()
+	destination := filepath.Join(t.TempDir(), "downloaded.dcm")
+	operations := []struct {
+		name string
+		run  func(ctx context.Context, values store.ContainerConfig) error
+	}{
+		{name: "Exists", run: func(ctx context.Context, values store.ContainerConfig) error {
+			_, err := backend.Exists(ctx, store.FileRequest{Config: values, Key: "tenant/file.txt"})
+			return err
+		}},
+		{name: "Delete", run: func(ctx context.Context, values store.ContainerConfig) error {
+			_, err := backend.Delete(ctx, store.FileRequest{Config: values, Key: "tenant/file.txt"})
+			return err
+		}},
+		{name: "GetOrNil", run: func(ctx context.Context, values store.ContainerConfig) error {
+			_, err := backend.GetOrNil(ctx, store.FileRequest{Config: values, Key: "tenant/file.txt"})
+			return err
+		}},
+		{name: "Download", run: func(ctx context.Context, values store.ContainerConfig) error {
+			_, err := backend.Download(ctx, store.DownloadRequest{
+				FileRequest: store.FileRequest{Config: values, Key: "tenant/file.txt"},
+				Destination: destination,
+			})
+			return err
+		}},
+	}
+
+	for _, operation := range operations {
+		t.Run(operation.name, func(t *testing.T) {
+			started := make(chan struct{})
+			release := make(chan struct{})
+			var once sync.Once
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				once.Do(func() { close(started) })
+				<-release
+				writeOSSError(w)
+			}))
+			t.Cleanup(func() {
+				select {
+				case <-release:
+				default:
+					close(release)
+				}
+				server.Close()
+			})
+
+			values := store.ContainerConfig{Values: map[string]string{
+				EndpointKey:        server.URL,
+				BucketKey:          "archive",
+				AccessKeyIDKey:     "access",
+				AccessKeySecretKey: "secret",
+			}}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- operation.run(ctx, values) }()
+			<-started
+			cancel()
+			close(release)
+			if err := <-done; !errors.Is(err, context.Canceled) {
+				t.Fatalf("%s() with canceled context error = %v, want context.Canceled", operation.name, err)
+			}
+		})
+	}
+}
+
 func writeOSSError(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/xml")
 	w.WriteHeader(http.StatusNotFound)

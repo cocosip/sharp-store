@@ -41,7 +41,10 @@ type backendConfig struct {
 }
 
 type Backend struct {
-	clients        sync.Map
+	clients sync.Map
+	// baseEndpoint and forcePathStyle are a test seam: they let package tests
+	// redirect the resolved AWS endpoints to a local fake. They are unexported
+	// and never set in production use.
 	baseEndpoint   string
 	forcePathStyle bool
 }

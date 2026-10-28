@@ -213,6 +213,10 @@ complete. Remote cache adapters must implement this comparison in the shared
 cache service, for example with a Redis script or transaction, rather than a
 process-local lock. A separate `Get` followed by `Set` is not sufficient.
 
+Cache read and fill failures never fail `Open`: the factory treats them as a
+miss, loads from the `ConfigSource`, and attempts the fill best-effort. The
+application-owned `Set` and `Delete` calls still surface their errors.
+
 The memory cache uses a cache-wide mutation version to avoid retaining per-key
 deletion tombstones. An unrelated mutation may therefore skip one cache fill;
 the next miss can populate it normally. A custom adapter may instead use

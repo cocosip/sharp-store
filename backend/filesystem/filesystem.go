@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	store "github.com/cocosip/sharp-store"
@@ -135,6 +136,17 @@ func (b *Backend) Delete(ctx context.Context, request store.FileRequest) (bool, 
 	if err != nil {
 		return false, err
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	// Directories created as parent prefixes are not objects.
+	if info.IsDir() {
+		return false, nil
+	}
 	if err := os.Remove(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
@@ -152,9 +164,9 @@ func (b *Backend) Exists(ctx context.Context, request store.FileRequest) (bool, 
 	if err != nil {
 		return false, err
 	}
-	_, err = os.Stat(path)
+	info, err := os.Stat(path)
 	if err == nil {
-		return true, nil
+		return !info.IsDir(), nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -192,6 +204,10 @@ func (b *Backend) GetOrNil(ctx context.Context, request store.FileRequest) (io.R
 		}
 		return nil, err
 	}
+	if info, err := file.Stat(); err == nil && info.IsDir() {
+		_ = file.Close()
+		return nil, nil
+	}
 	return file, nil
 }
 
@@ -220,6 +236,11 @@ func (b *Backend) path(request store.FileRequest) (string, error) {
 	if root == "" {
 		return "", fmt.Errorf("%s configuration is required", RootKey)
 	}
+	if runtime.GOOS == "windows" {
+		if err := checkWindowsKey(request.Key); err != nil {
+			return "", err
+		}
+	}
 	for _, segment := range strings.FieldsFunc(request.Key, func(r rune) bool { return r == '/' || r == '\\' }) {
 		if segment == ".." {
 			return "", fmt.Errorf("invalid object key %q", request.Key)
@@ -238,4 +259,41 @@ func (b *Backend) path(request store.FileRequest) (string, error) {
 		return "", fmt.Errorf("object key escapes configured root: %q", request.Key)
 	}
 	return path, nil
+}
+
+// windowsReservedBaseNames are device names that Windows resolves regardless
+// of the directory in the path, including with an extension such as nul.txt.
+var windowsReservedBaseNames = map[string]struct{}{}
+
+func init() {
+	for _, name := range []string{"CON", "PRN", "AUX", "NUL"} {
+		windowsReservedBaseNames[name] = struct{}{}
+	}
+	for index := 1; index <= 9; index++ {
+		windowsReservedBaseNames[fmt.Sprintf("COM%d", index)] = struct{}{}
+		windowsReservedBaseNames[fmt.Sprintf("LPT%d", index)] = struct{}{}
+	}
+}
+
+// checkWindowsKey rejects keys that Windows cannot round-trip as regular
+// files: colons create hidden NTFS alternate data streams, reserved device
+// names resolve to hardware devices instead of files, and trailing dots or
+// spaces are silently stripped from the created name.
+func checkWindowsKey(key string) error {
+	for _, segment := range strings.FieldsFunc(key, func(r rune) bool { return r == '/' || r == '\\' }) {
+		if strings.ContainsRune(segment, ':') {
+			return fmt.Errorf("object key %q contains ':' which Windows cannot store as a regular file", key)
+		}
+		base := segment
+		if index := strings.IndexByte(base, '.'); index >= 0 {
+			base = base[:index]
+		}
+		if _, reserved := windowsReservedBaseNames[strings.ToUpper(base)]; reserved {
+			return fmt.Errorf("object key %q uses a reserved Windows device name", key)
+		}
+		if strings.HasSuffix(segment, ".") || strings.HasSuffix(segment, " ") {
+			return fmt.Errorf("object key %q has a segment ending in '.' or ' ' which Windows strips from file names", key)
+		}
+	}
+	return nil
 }

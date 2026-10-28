@@ -99,6 +99,51 @@ type cancelingReader struct{ cancel context.CancelFunc }
 
 func (r cancelingReader) Read(p []byte) (int, error) { r.cancel(); return copy(p, "partial"), io.EOF }
 
+func TestBackend_DirectoriesAreNotObjects(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	request := store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{RootKey: root}}, Key: "sub"}
+	b := New()
+	if exists, err := b.Exists(context.Background(), request); err != nil || exists {
+		t.Fatalf("Exists(directory) = (%t, %v), want (false, nil)", exists, err)
+	}
+	if reader, err := b.GetOrNil(context.Background(), request); err != nil || reader != nil {
+		t.Fatalf("GetOrNil(directory) = (%v, %v), want (nil, nil)", reader, err)
+	}
+	if deleted, err := b.Delete(context.Background(), request); err != nil || deleted {
+		t.Fatalf("Delete(directory) = (%t, %v), want (false, nil)", deleted, err)
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "sub" {
+		t.Fatalf("directory entries = %v, %v, want untouched directory", entries, err)
+	}
+}
+
+func TestBackend_RejectsWindowsReservedKeys(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows resolves reserved device names and strips trailing dots and spaces")
+	}
+	root := t.TempDir()
+	b := New()
+	for _, key := range []string{"nul", "NUL.txt", "com1", "report.txt:ads", "tail.", "tail. ", "sub/nul"} {
+		_, err := b.Save(context.Background(), store.SaveRequest{
+			FileRequest: store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{RootKey: root}}, Key: key},
+			Body:        strings.NewReader("data"),
+		})
+		if err == nil {
+			t.Errorf("Save accepted reserved Windows key %q", key)
+		}
+	}
+	if _, err := b.Save(context.Background(), store.SaveRequest{
+		FileRequest: store.FileRequest{Config: store.ContainerConfig{Values: map[string]string{RootKey: root}}, Key: "reports/2026.txt"},
+		Body:        strings.NewReader("data"),
+	}); err != nil {
+		t.Fatalf("Save() rejected a regular key: %v", err)
+	}
+}
+
 func TestBackend_SaveCanceledBeforePublish(t *testing.T) {
 	root := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())

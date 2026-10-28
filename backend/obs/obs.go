@@ -85,9 +85,12 @@ func (b *Backend) Save(ctx context.Context, r store.SaveRequest) (string, error)
 	_, err = client.PutObject(&obsdk.PutObjectInput{PutObjectBasicInput: obsdk.PutObjectBasicInput{ObjectOperationInput: obsdk.ObjectOperationInput{Bucket: bucket, Key: r.Key}}, Body: r.Body}, obsdk.WithCustomHeader("x-obs-forbid-overwrite", strconv.FormatBool(!r.Overwrite)))
 	var serviceError obsdk.ObsError
 	if !r.Overwrite && errors.As(err, &serviceError) && serviceError.Code == "ObjectAlreadyExists" {
-		return "", store.ErrFileExists
+		return "", fmt.Errorf("%w: %s", store.ErrFileExists, r.FileID)
 	}
-	return r.FileID, err
+	if err != nil {
+		return "", err
+	}
+	return r.FileID, nil
 }
 func (b *Backend) Delete(ctx context.Context, r store.FileRequest) (bool, error) {
 	if err := ctx.Err(); err != nil {

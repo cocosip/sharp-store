@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -129,5 +130,29 @@ func TestMemoryConfigCache_ConditionalFill(t *testing.T) {
 	}
 	if _, err := cache.SetIfVersion(canceled, "files", tenant, config, version); err != context.Canceled {
 		t.Fatalf("canceled fill: %v", err)
+	}
+}
+
+func TestMemoryConfigCache_SweepsExpiredEntries(t *testing.T) {
+	now := time.Date(2026, 9, 8, 0, 0, 0, 0, time.UTC)
+	cache := newMemoryConfigCache(time.Minute, func() time.Time { return now })
+	tenant := DefaultTenantContext{ID: "tenant-a"}
+
+	for index := range 32 {
+		key := ContainerKey(fmt.Sprintf("container-%02d", index))
+		if err := cache.Set(context.Background(), key, tenant, ContainerConfig{Backend: "memory"}); err != nil {
+			t.Fatalf("Set(%q) error = %v", key, err)
+		}
+	}
+	if len(cache.entries) != 32 {
+		t.Fatalf("entries = %d, want 32 live entries", len(cache.entries))
+	}
+
+	now = now.Add(2 * time.Minute)
+	if err := cache.Set(context.Background(), "fresh", tenant, ContainerConfig{Backend: "memory"}); err != nil {
+		t.Fatalf("Set(fresh) error = %v", err)
+	}
+	if len(cache.entries) != 1 {
+		t.Fatalf("entries after sweep = %d, want only the fresh entry", len(cache.entries))
 	}
 }

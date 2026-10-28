@@ -49,9 +49,11 @@ func (s *cachedConfigSource) Load(
 	key ContainerKey,
 	tenant TenantContext,
 ) (ContainerConfig, error) {
+	// A failing cache read is treated as a miss so a cache outage cannot take
+	// container opens down while the source is healthy.
 	config, ok, err := s.cache.Get(ctx, key, tenant)
-	if err != nil || ok {
-		return config, err
+	if err == nil && ok {
+		return config, nil
 	}
 
 	loadKey := configLoadKey{key: key}
@@ -79,12 +81,16 @@ func (s *cachedConfigSource) Load(
 	} else {
 		call.config, ok, call.err = s.cache.Get(ctx, key, tenant)
 	}
-	if call.err == nil && !ok {
+	if call.err != nil {
+		call.config, ok, version, call.err = ContainerConfig{}, false, "", nil
+	}
+	if !ok {
 		call.config, call.err = s.source.Load(ctx, key, tenant)
 		if call.err == nil {
 			call.config = call.config.Clone()
 			if canFill {
-				_, call.err = versioned.SetIfVersion(ctx, key, tenant, call.config, version)
+				// Best effort: a failing fill must not fail the load.
+				_, _ = versioned.SetIfVersion(ctx, key, tenant, call.config, version)
 			}
 		}
 	}
